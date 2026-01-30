@@ -35,6 +35,11 @@ python3 scripts/tesla.py list --json   # machine-readable, privacy-safe
 python3 scripts/tesla.py version
 python3 scripts/tesla.py --version
 
+# Debugging
+# If something fails unexpectedly, add --debug for a full traceback
+# (or set MY_TESLA_DEBUG=1)
+python3 scripts/tesla.py --debug status --no-wake
+
 # Pick a car (optional)
 # --car accepts: exact name, partial name (substring match), or a 1-based index from `list`
 python3 scripts/tesla.py --car "Model" report
@@ -57,6 +62,7 @@ python3 scripts/tesla.py summary --json --raw-json   # raw vehicle_data (may inc
 # Also includes a quick openings summary (doors/trunk/frunk/windows) when the vehicle reports it.
 # When available, includes a compact seat heater summary line.
 # When actively charging, also shows charging power details when available (kW / V / A).
+# When the vehicle reports it, includes scheduled departure / preconditioning / off-peak charging status.
 python3 scripts/tesla.py report
 python3 scripts/tesla.py report --no-wake
 
@@ -92,6 +98,11 @@ python3 scripts/tesla.py charge amps 16 --yes     # 1–48 (conservative guardra
 python3 scripts/tesla.py scheduled-charging status
 python3 scripts/tesla.py scheduled-charging set 23:30 --yes
 python3 scripts/tesla.py scheduled-charging off --yes
+
+# Scheduled departure (read-only)
+python3 scripts/tesla.py scheduled-departure status
+python3 scripts/tesla.py scheduled-departure status --no-wake
+python3 scripts/tesla.py --json scheduled-departure status
 
 # Trunk / frunk (safety gated)
 python3 scripts/tesla.py trunk trunk --yes
@@ -134,6 +145,8 @@ python3 scripts/tesla.py sentry off --yes
 # Location (approx by default; use --yes for precise coordinates)
 python3 scripts/tesla.py location
 python3 scripts/tesla.py location --no-wake
+python3 scripts/tesla.py location --digits 1   # coarser rounding
+python3 scripts/tesla.py location --digits 3   # a bit more precise (still approximate)
 python3 scripts/tesla.py location --yes
 
 # Tire pressures (TPMS)
@@ -151,6 +164,10 @@ python3 scripts/tesla.py mileage record --no-wake --auto-wake-after-hours 24
 python3 scripts/tesla.py mileage status
 python3 scripts/tesla.py mileage export --format csv > mileage.csv
 python3 scripts/tesla.py mileage export --format json > mileage.json
+
+# Export a time window
+python3 scripts/tesla.py mileage export --format csv --since-days 7 > mileage_last_7d.csv
+python3 scripts/tesla.py mileage export --format json --since-ts 1738195200 > mileage_since_ts.json
 ```
 
 ## Mileage tracking (hourly)

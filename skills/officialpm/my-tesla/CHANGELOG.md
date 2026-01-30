@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.62 — 2026-01-29
+- Better UX: add `scheduled-departure status` (read-only) for scheduled departure / preconditioning / off-peak charging.
+- Reliability: add unit tests for scheduled-departure JSON formatting.
+
+## 0.1.61 — 2026-01-29
+- Better UX: `mileage export` now supports time-window filtering via `--since-days` or `--since-ts`.
+- Reliability: add unit tests for mileage export filtering helpers.
+
+## 0.1.60 — 2026-01-29
+- Better UX: add global `--debug` (or `MY_TESLA_DEBUG=1`) to print full tracebacks on errors.
+
+## 0.1.59 — 2026-01-29
+- Better UX / safety: `location` now supports `--digits N` (0–6) to control rounding precision for approximate coordinates.
+- Reliability: add unit tests for coordinate rounding helper.
+
+## 0.1.58 — 2026-01-29
+- Better UX: `report` now includes scheduled departure / preconditioning / off-peak charging status when the vehicle reports it.
+
+## 0.1.57 — 2026-01-29
+- Dev hygiene: ignore common Python tooling caches (e.g., `.pytest_cache/`, `.mypy_cache/`) to keep the repo clean.
+
 ## 0.1.56 — 2026-01-29
 - Better UX: `summary --json` now outputs a small **sanitized** JSON object (no location) for easy scripting; `--raw-json` is still available when you explicitly want raw `vehicle_data`.
 - Reliability: add unit tests for summary JSON sanitization.

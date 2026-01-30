@@ -16,6 +16,7 @@ import os
 import sys
 import sqlite3
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -530,6 +531,25 @@ def _report(vehicle, data):
         if bits:
             lines.append(f"Scheduled charging: {' '.join(bits)}")
 
+    # Scheduled departure / off-peak charging (read-only)
+    dep_enabled = charge.get('scheduled_departure_enabled')
+    dep_time = charge.get('scheduled_departure_time')
+    precond = charge.get('preconditioning_enabled')
+    off_peak = charge.get('off_peak_charging_enabled')
+    if dep_enabled is not None or dep_time is not None or precond is not None or off_peak is not None:
+        bits = []
+        if dep_enabled is not None:
+            bits.append('On' if dep_enabled else 'Off')
+        hhmm = _fmt_minutes_hhmm(dep_time)
+        if hhmm:
+            bits.append(hhmm)
+        if precond is not None:
+            bits.append(f"precond {'On' if precond else 'Off'}")
+        if off_peak is not None:
+            bits.append(f"off-peak {'On' if off_peak else 'Off'}")
+        if bits:
+            lines.append(f"Scheduled departure: {' '.join(bits)}")
+
     inside = _fmt_temp_pair(climate.get('inside_temp'))
     outside = _fmt_temp_pair(climate.get('outside_temp'))
     if inside:
@@ -601,6 +621,12 @@ def _report_json(vehicle, data: dict) -> dict:
             "mode": charge.get('scheduled_charging_mode'),
             "pending": charge.get('scheduled_charging_pending'),
             "start_time_hhmm": _fmt_minutes_hhmm(charge.get('scheduled_charging_start_time')),
+        },
+        "scheduled_departure": {
+            "enabled": charge.get('scheduled_departure_enabled'),
+            "time_hhmm": _fmt_minutes_hhmm(charge.get('scheduled_departure_time')),
+            "preconditioning_enabled": charge.get('preconditioning_enabled'),
+            "off_peak_charging_enabled": charge.get('off_peak_charging_enabled'),
         },
         "climate": {
             "inside_temp_c": climate.get('inside_temp'),
@@ -986,14 +1012,71 @@ def cmd_scheduled_charging(args):
     raise ValueError(f"Unknown action: {args.action}")
 
 
+def _scheduled_departure_status_json(charge: dict) -> dict:
+    """Small, privacy-safe scheduled departure status object."""
+    charge = charge or {}
+    return {
+        'scheduled_departure_enabled': charge.get('scheduled_departure_enabled'),
+        'scheduled_departure_time': charge.get('scheduled_departure_time'),
+        'scheduled_departure_time_hhmm': _fmt_minutes_hhmm(charge.get('scheduled_departure_time')),
+        'preconditioning_enabled': charge.get('preconditioning_enabled'),
+        'off_peak_charging_enabled': charge.get('off_peak_charging_enabled'),
+    }
+
+
+def cmd_scheduled_departure(args):
+    """Get scheduled departure / off-peak charging / preconditioning status (read-only)."""
+    tesla = get_tesla(require_email(args))
+    vehicle = get_vehicle(tesla, args.car)
+
+    allow_wake = not getattr(args, 'no_wake', False)
+    _ensure_online_or_exit(vehicle, allow_wake=allow_wake)
+
+    data = vehicle.get_vehicle_data()
+    charge = data.get('charge_state', {})
+    out = _scheduled_departure_status_json(charge)
+
+    if getattr(args, 'json', False):
+        print(json.dumps(out, indent=2))
+        return
+
+    print(f"🚗 {vehicle['display_name']}")
+    if out.get('scheduled_departure_enabled') is not None:
+        print(f"Scheduled departure: {_fmt_bool(out.get('scheduled_departure_enabled'), 'On', 'Off')}")
+    else:
+        print("Scheduled departure: (unknown)")
+
+    hhmm = out.get('scheduled_departure_time_hhmm')
+    if hhmm:
+        print(f"Departure time: {hhmm}")
+
+    if out.get('preconditioning_enabled') is not None:
+        print(f"Preconditioning: {_fmt_bool(out.get('preconditioning_enabled'), 'On', 'Off')}")
+
+    if out.get('off_peak_charging_enabled') is not None:
+        print(f"Off-peak charging: {_fmt_bool(out.get('off_peak_charging_enabled'), 'On', 'Off')}")
+
+
 def _round_coord(x, digits: int = 2):
     """Round a coordinate for safer display.
 
-    digits=2 is roughly ~1km precision (varies with latitude) and is
-    intended as a non-sensitive default.
+    digits=2 is roughly ~1km precision (varies with latitude) and is intended
+    as a non-sensitive default.
+
+    We cap digits to a small range to avoid accidentally producing overly
+    precise coordinates.
     """
     try:
-        return round(float(x), digits)
+        d = int(digits)
+    except Exception:
+        return None
+
+    # 0..6 is still plenty for display; tighter by default.
+    if d < 0 or d > 6:
+        return None
+
+    try:
+        return round(float(x), d)
     except Exception:
         return None
 
@@ -1003,6 +1086,8 @@ def cmd_location(args):
 
     Default output is *approximate* (rounded) to reduce accidental leakage.
     Use --yes for precise coordinates.
+
+    Use --digits N (0–6) to control rounding precision for approximate output.
     """
     tesla = get_tesla(require_email(args))
     vehicle = get_vehicle(tesla, args.car)
@@ -1018,10 +1103,11 @@ def cmd_location(args):
         print(f"   https://www.google.com/maps?q={lat},{lon}")
         return
 
-    lat_r = _round_coord(lat, 2)
-    lon_r = _round_coord(lon, 2)
+    digits = getattr(args, 'digits', 2)
+    lat_r = _round_coord(lat, digits)
+    lon_r = _round_coord(lon, digits)
     if lat_r is None or lon_r is None:
-        raise ValueError("Missing location coordinates")
+        raise ValueError("Invalid or missing location coordinates (try --digits 0..6)")
 
     print(f"📍 {vehicle['display_name']} Location (approx): {lat_r}, {lon_r}")
     print(f"   https://www.google.com/maps?q={lat_r},{lon_r}")
@@ -1599,6 +1685,49 @@ def resolve_mileage_db_path(args=None) -> Path:
     return MILEAGE_DB_DEFAULT
 
 
+def resolve_since_ts(*, since_ts: int | None = None, since_days: float | None = None) -> int | None:
+    """Resolve a cutoff timestamp (UTC epoch seconds) for mileage export.
+
+    - since_ts wins if provided.
+    - since_days is interpreted as "now - N days".
+
+    Returns None when no cutoff is requested.
+    """
+    if since_ts is not None:
+        try:
+            return int(since_ts)
+        except Exception:
+            raise ValueError("--since-ts must be an integer epoch timestamp (seconds)")
+
+    if since_days is None:
+        return None
+
+    try:
+        days = float(since_days)
+    except Exception:
+        raise ValueError("--since-days must be a number (e.g., 7 or 0.5)")
+
+    if days < 0:
+        raise ValueError("--since-days must be >= 0")
+
+    return int(time.time() - days * 86400)
+
+
+def mileage_fetch_points(conn, *, since_ts: int | None = None):
+    """Fetch mileage points ordered by timestamp asc, optionally filtered."""
+    if since_ts is None:
+        cur = conn.execute(
+            "SELECT ts_utc, vehicle_id, vehicle_name, odometer_mi, state, source, note FROM mileage_points ORDER BY ts_utc ASC"
+        )
+        return cur.fetchall()
+
+    cur = conn.execute(
+        "SELECT ts_utc, vehicle_id, vehicle_name, odometer_mi, state, source, note FROM mileage_points WHERE ts_utc >= ? ORDER BY ts_utc ASC",
+        (int(since_ts),),
+    )
+    return cur.fetchall()
+
+
 def _db_connect(path: Path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1818,12 +1947,15 @@ def cmd_mileage(args):
 
     if args.action == "export":
         fmt = getattr(args, "format", "csv")
+
+        since_ts = resolve_since_ts(
+            since_ts=getattr(args, "since_ts", None),
+            since_days=getattr(args, "since_days", None),
+        )
+
         conn = _db_connect(db_path)
         try:
-            cur = conn.execute(
-                "SELECT ts_utc, vehicle_id, vehicle_name, odometer_mi, state, source, note FROM mileage_points ORDER BY ts_utc ASC"
-            )
-            rows = cur.fetchall()
+            rows = mileage_fetch_points(conn, since_ts=since_ts)
         finally:
             conn.close()
 
@@ -1840,7 +1972,7 @@ def cmd_mileage(args):
                 }
                 for (ts, vid, name, odo, state, source, note) in rows
             ]
-            print(json.dumps({"db": str(db_path), "items": items}, indent=2))
+            print(json.dumps({"db": str(db_path), "since_ts_utc": since_ts, "items": items}, indent=2))
             return
 
         # csv
@@ -1899,7 +2031,13 @@ def main():
             "scheduled-charging set|off/sentry on|off/location precise)"
         ),
     )
-    
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print a full Python traceback on errors (also enabled by MY_TESLA_DEBUG=1)",
+    )
+
     parser.add_argument(
         "--version",
         action="store_true",
@@ -1947,6 +2085,16 @@ def main():
         help="If a car hasn't recorded mileage in this many hours, allow waking it (default: 24)",
     )
     mileage_parser.add_argument("--format", choices=["csv", "json"], default="csv", help="For export: csv|json")
+    mileage_parser.add_argument(
+        "--since-ts",
+        type=int,
+        help="(export only) Only include points with ts_utc >= this epoch timestamp (seconds)",
+    )
+    mileage_parser.add_argument(
+        "--since-days",
+        type=float,
+        help="(export only) Only include points from the last N days (e.g., 7 or 0.5)",
+    )
 
     # Lock/unlock
     subparsers.add_parser("lock", help="Lock the vehicle")
@@ -1981,9 +2129,26 @@ def main():
     sched_parser.add_argument("time", nargs="?", help="Start time for 'set' as HH:MM (24-hour)")
     sched_parser.add_argument("--no-wake", action="store_true", help="(status only) Do not wake the car")
 
+    # Scheduled departure (read-only)
+    dep_parser = subparsers.add_parser(
+        "scheduled-departure",
+        help="Scheduled departure / preconditioning / off-peak charging status (read-only)",
+    )
+    dep_parser.add_argument("action", choices=["status"], help="status")
+    dep_parser.add_argument("--no-wake", action="store_true", help="Do not wake the car (fails if asleep)")
+
     # Location
-    location_parser = subparsers.add_parser("location", help="Get vehicle location (approx by default; use --yes for precise)")
+    location_parser = subparsers.add_parser(
+        "location",
+        help="Get vehicle location (approx by default; use --yes for precise)",
+    )
     location_parser.add_argument("--no-wake", action="store_true", help="Do not wake the car (fails if asleep)")
+    location_parser.add_argument(
+        "--digits",
+        type=int,
+        default=2,
+        help="(approx output) Rounding precision for latitude/longitude (0–6). Default: 2",
+    )
 
     # Tire pressures (TPMS)
     tires_parser = subparsers.add_parser("tires", help="Show tire pressures (TPMS)")
@@ -2053,6 +2218,7 @@ def main():
         "climate": cmd_climate,
         "charge": cmd_charge,
         "scheduled-charging": cmd_scheduled_charging,
+        "scheduled-departure": cmd_scheduled_departure,
         "location": cmd_location,
         "tires": cmd_tires,
         "openings": cmd_openings,
@@ -2070,8 +2236,18 @@ def main():
 
     try:
         commands[args.command](args)
+    except KeyboardInterrupt:
+        print("\n⛔ Interrupted", file=sys.stderr)
+        sys.exit(130)
     except Exception as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
+        debug = bool(getattr(args, "debug", False)) or os.environ.get("MY_TESLA_DEBUG") == "1"
+        if debug:
+            # Print both a friendly line and a full traceback.
+            print(f"❌ Error: {e}", file=sys.stderr)
+            traceback.print_exc()
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
+            print("   Tip: re-run with --debug for a full traceback", file=sys.stderr)
         sys.exit(1)
 
 

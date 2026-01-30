@@ -39,6 +39,11 @@ python3 {baseDir}/scripts/tesla.py list --json   # machine-readable, privacy-saf
 python3 {baseDir}/scripts/tesla.py version
 python3 {baseDir}/scripts/tesla.py --version
 
+# Debugging
+# If something fails unexpectedly, add --debug for a full traceback
+# (or set MY_TESLA_DEBUG=1)
+python3 {baseDir}/scripts/tesla.py --debug status --no-wake
+
 # Pick a car (optional)
 # --car accepts: exact name, partial name (substring match), or a 1-based index from `list`
 python3 {baseDir}/scripts/tesla.py --car "Model" status
@@ -60,6 +65,7 @@ python3 {baseDir}/scripts/tesla.py summary --json --raw-json   # raw vehicle_dat
 # Includes battery/charging/climate + (when available) TPMS tire pressures.
 # Also includes a quick openings summary (doors/trunk/frunk/windows) when available.
 # When available, includes a compact seat heater summary line.
+# When the vehicle reports it, includes scheduled departure / preconditioning / off-peak charging status.
 python3 {baseDir}/scripts/tesla.py report
 python3 {baseDir}/scripts/tesla.py report --no-wake
 
@@ -107,9 +113,17 @@ python3 {baseDir}/scripts/tesla.py scheduled-charging status --no-wake
 python3 {baseDir}/scripts/tesla.py scheduled-charging set 23:30 --yes
 python3 {baseDir}/scripts/tesla.py scheduled-charging off --yes
 
+# Scheduled departure (read-only)
+# Shows scheduled departure, preconditioning, and off-peak charging flags (when the vehicle reports them).
+python3 {baseDir}/scripts/tesla.py scheduled-departure status
+python3 {baseDir}/scripts/tesla.py scheduled-departure status --no-wake
+python3 {baseDir}/scripts/tesla.py --json scheduled-departure status
+
 # Location (approx by default; use --yes for precise coordinates)
 python3 {baseDir}/scripts/tesla.py location
 python3 {baseDir}/scripts/tesla.py location --no-wake
+python3 {baseDir}/scripts/tesla.py location --digits 1   # coarser rounding
+python3 {baseDir}/scripts/tesla.py location --digits 3   # a bit more precise (still approximate)
 python3 {baseDir}/scripts/tesla.py location --yes
 
 # Tire pressures (TPMS)
@@ -160,7 +174,9 @@ python3 {baseDir}/scripts/tesla.py mileage init
 python3 {baseDir}/scripts/tesla.py mileage record --no-wake --auto-wake-after-hours 24
 python3 {baseDir}/scripts/tesla.py mileage status
 python3 {baseDir}/scripts/tesla.py mileage export --format csv
+python3 {baseDir}/scripts/tesla.py mileage export --format csv --since-days 7
 python3 {baseDir}/scripts/tesla.py mileage export --format json
+python3 {baseDir}/scripts/tesla.py mileage export --format json --since-ts 1738195200
 
 # Charge port door open/close (safety gated)
 python3 {baseDir}/scripts/tesla.py charge-port open  --yes
@@ -175,7 +191,7 @@ python3 {baseDir}/scripts/tesla.py flash  --yes
 
 Some actions require an explicit confirmation flag:
 - `unlock`, `charge start|stop|limit|amps`, `trunk`, `windows`, `seats set`, `sentry on|off`, `honk`, `flash`, `charge-port open|close`, and `scheduled-charging set|off` require `--yes`
-- `location` is *approximate* by default; add `--yes` for precise coordinates
+- `location` is *approximate* by default; add `--yes` for precise coordinates (or `--digits N` to control rounding)
 
 ## Privacy
 
