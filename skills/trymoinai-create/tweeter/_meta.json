@@ -1,0 +1,11 @@
+{
+  "owner": "trymoinai-create",
+  "slug": "tweeter",
+  "displayName": "Moin",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1769837310093,
+    "commit": null
+  },
+  "history": []
+}
