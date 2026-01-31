@@ -1,9 +1,9 @@
-# Fitbit Analytics Skill for Clawdbot 🦞
+# Fitbit Analytics Skill for OpenClaw 🦞
 
-[![Clawdbot Community Skill](https://img.shields.io/badge/clawdbot-community%20skill-blue)](https://github.com/clawdbot/clawdbot)
+[![OpenClaw Community Skill](https://img.shields.io/badge/openclaw-community%20skill-blue)](https://github.com/openclaw/openclaw)
 [![ClawdHub Listed](https://img.shields.io/badge/clawdhub-listed-green)](https://clawdhub.com/skills/fitbit-analytics)
 
-Fitbit health and fitness data integration for Clawdbot. Fetch steps, heart rate, sleep, activity, calories, and trends from Fitbit Web API. Generate automated health reports, correlations, and alerts.
+Fitbit health and fitness data integration for OpenClaw. Fetch steps, heart rate, sleep, activity, calories, and trends from Fitbit Web API. Generate automated health reports, correlations, and alerts.
 
 ## Features
 
