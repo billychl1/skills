@@ -3,11 +3,16 @@
   "slug": "people-memories",
   "displayName": "People Memories",
   "latest": {
-    "version": "0.1.1",
-    "publishedAt": 1769764202900,
-    "commit": "https://github.com/clawdbot/skills/commit/bbf437b97fd1c39d4f47f3d5cd64acbaf487dfec"
+    "version": "0.1.0",
+    "publishedAt": 1769691822105,
+    "commit": null
   },
   "history": [
+    {
+      "version": "0.1.1",
+      "publishedAt": 1769764202900,
+      "commit": "https://github.com/clawdbot/skills/commit/bbf437b97fd1c39d4f47f3d5cd64acbaf487dfec"
+    },
     {
       "version": "0.1.0",
       "publishedAt": 1769691822105,
