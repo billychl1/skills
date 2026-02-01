@@ -3,11 +3,16 @@
   "slug": "moltbook-registry",
   "displayName": "Moltbook Agent Registry",
   "latest": {
-    "version": "1.0.2",
-    "publishedAt": 1769857013345,
-    "commit": "https://github.com/clawdbot/skills/commit/fc503dc37d4d895562393a89698878e69a938700"
+    "version": "1.0.3",
+    "publishedAt": 1769913434069,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.0.2",
+      "publishedAt": 1769857013345,
+      "commit": "https://github.com/clawdbot/skills/commit/fc503dc37d4d895562393a89698878e69a938700"
+    },
     {
       "version": "1.0.1",
       "publishedAt": 1769844383041,

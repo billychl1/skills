@@ -7,13 +7,19 @@ const REGISTRATION_FEE = "0.0001"; // ETH
 
 // ============ ABI ============
 const ABI = [
+  // Read Functions
   "function name() view returns (string)",
   "function symbol() view returns (string)",
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function agents(uint256 tokenId) view returns (string endpoints, address wallet, bool isVerified)",
   "function tokenURI(uint256 tokenId) view returns (string)",
-  "function registerAgent(address to, string uri, string endpoints, address agentWallet) payable returns (uint256)", // V3
-  "function logReputation(uint256 agentId, uint8 score) payable" // V2 Reputation
+  
+  // Write Functions
+  "function registerAgent(address to, string uri, string endpoints, address agentWallet) payable returns (uint256)",
+  "function logReputation(uint256 agentId, uint8 score) payable",
+  
+  // Events (Crucial for reading history)
+  "event ReputationLogged(uint256 indexed agentId, uint8 score)"
 ];
 
 // ============ TOOL LOGIC ============
@@ -34,7 +40,6 @@ async function status({ query }) {
   const provider = await getProvider();
   const contract = new ethers.Contract(REGISTRY_ADDRESS, ABI, provider);
 
-  // If query is an ID
   if (!isNaN(query)) {
     try {
       const owner = await contract.ownerOf(query);
@@ -43,9 +48,6 @@ async function status({ query }) {
       return `❌ Agent #${query} NOT FOUND.`;
     }
   }
-  
-  // If query is a Wallet Address (TODO: Add reverse lookup map in contract later)
-  // For now, scan recent or say not supported efficiently
   return "🔍 Reverse lookup (Wallet -> ID) coming soon. Search by ID.";
 }
 
@@ -55,14 +57,14 @@ async function status({ query }) {
 async function lookup({ id }) {
   const provider = await getProvider();
   const contract = new ethers.Contract(REGISTRY_ADDRESS, ABI, provider);
-  
+
   try {
     const [owner, profile, uri] = await Promise.all([
       contract.ownerOf(id),
       contract.agents(id),
       contract.tokenURI(id)
     ]);
-    
+
     return JSON.stringify({
       id,
       owner,
@@ -77,29 +79,71 @@ async function lookup({ id }) {
 }
 
 /**
+ * Calculate Reputation from Chain History
+ */
+async function reputation({ id }) {
+  const provider = await getProvider();
+  const contract = new ethers.Contract(REGISTRY_ADDRESS, ABI, provider);
+
+  try {
+    // 1. Define the filter (From Block 0 to Latest)
+    const filter = contract.filters.ReputationLogged(id);
+    
+    // 2. Fetch all logs
+    const logs = await contract.queryFilter(filter);
+
+    if (logs.length === 0) {
+      return JSON.stringify({
+        id, 
+        averageScore: 0, 
+        totalReviews: 0, 
+        status: "No History" 
+      }, null, 2);
+    }
+
+    // 3. Calculate Average
+    let totalScore = 0;
+    logs.forEach(log => {
+      totalScore += Number(log.args[1]); 
+    });
+
+    const average = (totalScore / logs.length).toFixed(2);
+
+    return JSON.stringify({
+      id,
+      averageScore: average,
+      totalReviews: logs.length,
+      history: logs.map(l => Number(l.args[1])) // Returns array of past scores
+    }, null, 2);
+
+  } catch (e) {
+    return `❌ Error calculating reputation: ${e.message}`;
+  }
+}
+
+/**
  * Register Agent (Requires Wallet)
  */
 async function register({ endpoints, uri, agentWallet }) {
   const provider = await getProvider();
   const wallet = await getWallet(provider);
   const contract = new ethers.Contract(REGISTRY_ADDRESS, ABI, wallet);
-  
-  const myAddress = wallet.address; // The msg.sender (owner of the NFT)
-  const agentWalletAddress = agentWallet || myAddress; // The actual agent's operational wallet
+
+  const myAddress = wallet.address; 
+  const agentWalletAddress = agentWallet || myAddress; 
   const metadataUri = uri || `https://moltbook.com/agent/${myAddress}`;
   const endpointsJson = typeof endpoints === 'string' ? endpoints : JSON.stringify(endpoints);
 
-  console.log(`📝 Registering agent for ${myAddress} (operational wallet: ${agentWalletAddress})...`);
-  
+  console.log(`📝 Registering agent for ${myAddress}...`);
+
   try {
-    // Send TX with Value (x402 Fee)
     const fee = ethers.parseEther(REGISTRATION_FEE);
     const tx = await contract.registerAgent(myAddress, metadataUri, endpointsJson, agentWalletAddress, { value: fee });
-    
+
     console.log(`🚀 TX Sent: ${tx.hash}`);
     const receipt = await tx.wait();
-    
-    return `✅ REGISTRATION SUCCESS!\nTransaction: ${tx.hash}\nBlock: ${receipt.blockNumber}\nWelcome to the Registry.`;
+
+    return `✅ REGISTRATION SUCCESS!\nTransaction: ${tx.hash}\nBlock: ${receipt.blockNumber}`;
   } catch (e) {
     return `❌ Registration Failed: ${e.message}`;
   }
@@ -114,9 +158,9 @@ async function rate({ agentId, score }) {
   const contract = new ethers.Contract(REGISTRY_ADDRESS, ABI, wallet);
 
   try {
-    const fee = ethers.parseEther(REGISTRATION_FEE); // Using same fee as registration for now
+    const fee = ethers.parseEther(REGISTRATION_FEE); 
     const tx = await contract.logReputation(agentId, score, { value: fee });
-    
+
     console.log(`🚀 TX Sent: ${tx.hash}`);
     const receipt = await tx.wait();
 
@@ -130,6 +174,7 @@ async function rate({ agentId, score }) {
 module.exports = {
   status,
   lookup,
+  reputation,
   register,
   rate
 };
