@@ -4,7 +4,7 @@
 
 Track soccer, football, basketball, hockey, baseball, F1, and more!
 
-Built for [Clawdbot](https://clawdbot.com) but works standalone too.
+Built for [OpenClaw](https://openclaw.com) but works standalone too.
 
 ## ✨ Features
 
@@ -14,7 +14,7 @@ Built for [Clawdbot](https://clawdbot.com) but works standalone too.
 - ⏸️ **Period updates** — Halftime, quarters, intermissions
 - 🏁 **Final results** with WIN/LOSS/DRAW
 - 📊 **Multi-team support** — track as many teams as you want
-- 🔄 **Auto-scheduling** — cron jobs for match days (Clawdbot)
+- 🔄 **Auto-scheduling** — cron jobs for match days (OpenClaw)
 - 💰 **100% FREE** — no API keys, no subscriptions!
 
 ## 🎯 The Secret Sauce: ESPN API
@@ -55,20 +55,41 @@ This skill uses ESPN's public API which provides:
 
 ```bash
 # Clone or copy to your skills directory
-clawdhub install sports-ticker
+clawhub install sports-ticker
 
 # Or manually
 git clone https://github.com/your-repo/sports-ticker
 cd sports-ticker
 ```
 
-### 2. Configure Your Teams
+### 2. Run the Setup Wizard 🧙‍♂️
+
+First time? The interactive wizard makes setup a breeze!
 
 ```bash
-# Interactive setup
 python3 scripts/setup.py
+```
 
-# Or find team IDs directly
+**The wizard walks you through:**
+1. 📺 **Pick your sports** — Soccer, NFL, NBA, NHL, MLB, F1
+2. 🏆 **Choose your teams** — Popular picks or search any team
+3. 🔔 **Set alert style** — Live scores / Final only / Daily digest
+4. ⏰ **Game-day reminders** — Get notified 30 mins before kick-off
+5. 🌙 **Quiet hours** — No alerts while you sleep
+
+**Example:**
+```
+╔═══════════════════════════════════════════════════════╗
+║   🏆  SPORTS TICKER  🏆                               ║
+║   ⚽ 🏈 🏀 🏒 ⚾ 🏎️                                    ║
+║   Never miss a goal, touchdown, or checkered flag!   ║
+╚═══════════════════════════════════════════════════════╝
+```
+
+### 3. Or Configure Manually
+
+```bash
+# Find team IDs directly
 python3 scripts/setup.py find "Lakers" basketball
 python3 scripts/setup.py find "Chiefs" football
 python3 scripts/setup.py find "Barcelona" soccer
@@ -191,7 +212,7 @@ Oilers 3-2 Maple Leafs
 Kansas City Chiefs 31-24 Buffalo Bills
 ```
 
-## 🤖 Clawdbot Integration
+## 🤖 OpenClaw Integration
 
 ### Automatic Cron Setup
 
