@@ -1,0 +1,11 @@
+{
+  "owner": "humanagent",
+  "slug": "xmtp-cli",
+  "displayName": "XMTP CLI",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1769993827831,
+    "commit": null
+  },
+  "history": []
+}
