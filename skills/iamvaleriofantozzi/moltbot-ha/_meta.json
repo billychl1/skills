@@ -1,0 +1,11 @@
+{
+  "owner": "iamvaleriofantozzi",
+  "slug": "moltbot-ha",
+  "displayName": "Moltbot Home Assistant",
+  "latest": {
+    "version": "0.1.1",
+    "publishedAt": 1770056090474,
+    "commit": null
+  },
+  "history": []
+}
