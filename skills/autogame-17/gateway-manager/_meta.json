@@ -1,0 +1,11 @@
+{
+  "owner": "autogame-17",
+  "slug": "gateway-manager",
+  "displayName": "Gateway Manager",
+  "latest": {
+    "version": "1.1.5",
+    "publishedAt": 1770118203029,
+    "commit": null
+  },
+  "history": []
+}
