@@ -3,11 +3,16 @@
   "slug": "phoenixclaw",
   "displayName": "phoenixclaw",
   "latest": {
-    "version": "0.0.6",
-    "publishedAt": 1770052178008,
-    "commit": "https://github.com/clawdbot/skills/commit/fc820dd05552121b2edfa0d75b937fd2d26a6494"
+    "version": "0.0.7",
+    "publishedAt": 1770092854411,
+    "commit": null
   },
   "history": [
+    {
+      "version": "0.0.6",
+      "publishedAt": 1770052178008,
+      "commit": "https://github.com/clawdbot/skills/commit/fc820dd05552121b2edfa0d75b937fd2d26a6494"
+    },
     {
       "version": "0.0.5",
       "publishedAt": 1770049125417,
