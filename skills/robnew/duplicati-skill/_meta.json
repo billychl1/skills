@@ -1,0 +1,11 @@
+{
+  "owner": "robnew",
+  "slug": "duplicati-skill",
+  "displayName": "Duplicati Backup Manager",
+  "latest": {
+    "version": "0.1.0",
+    "publishedAt": 1770078422742,
+    "commit": null
+  },
+  "history": []
+}
