@@ -1,0 +1,11 @@
+{
+  "owner": "jacobzwj",
+  "slug": "bilibili-hot-monitor",
+  "displayName": "B站热门视频监控",
+  "latest": {
+    "version": "1.0.8",
+    "publishedAt": 1770104882830,
+    "commit": null
+  },
+  "history": []
+}
