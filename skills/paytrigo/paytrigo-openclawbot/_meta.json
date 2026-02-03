@@ -1,0 +1,11 @@
+{
+  "owner": "paytrigo",
+  "slug": "paytrigo-openclawbot",
+  "displayName": "PayTrigo (OpenClawBot, Base/USDC)",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1770049601169,
+    "commit": null
+  },
+  "history": []
+}
