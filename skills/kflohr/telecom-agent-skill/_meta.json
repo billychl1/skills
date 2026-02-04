@@ -1,0 +1,11 @@
+{
+  "owner": "kflohr",
+  "slug": "telecom-agent-skill",
+  "displayName": "Telecom Control Plane",
+  "latest": {
+    "version": "0.1.2",
+    "publishedAt": 1770146837090,
+    "commit": null
+  },
+  "history": []
+}
