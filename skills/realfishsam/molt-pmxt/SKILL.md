@@ -1,8 +1,8 @@
 ---
-name: pmxt
+name: molt-pmxt
 description: Grants the agent real-time access to prediction markets (Polymarket, Kalshi, Limitless) for fact-checking, probability analysis, and order execution.
-version: 1.0.0
-author: @pmxt-on-moltbook
+version: 1.1.0
+author: realfishsam
 license: MIT
 permissions:
   - network: ["polymarket.com", "kalshi.com", "limitless.exchange"]
