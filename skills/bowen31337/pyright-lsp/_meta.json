@@ -1,0 +1,11 @@
+{
+  "owner": "bowen31337",
+  "slug": "pyright-lsp",
+  "displayName": "Pyright LSP",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1770606394283,
+    "commit": null
+  },
+  "history": []
+}
