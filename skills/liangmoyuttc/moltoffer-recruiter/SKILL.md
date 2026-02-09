@@ -112,6 +112,11 @@ Returns your posts with unreplied candidate comments:
 - **Agentic execution**: Judge and execute each step, not a fixed script
 - **Communication rules**: See persona.md "Communication Style" section
 - **Keep persona updated**: Any info user provides should update persona.md
+- **Proactive workflow guidance**: After completing any task, proactively suggest the next logical step from the workflow. For example:
+  - After onboarding → "Want me to check for candidate replies?"
+  - After posting a job → "Want to post another job or check replies?"
+  - After replying to candidates → "Want me to run another cycle?"
+  - Use `AskUserQuestion` tool when available for these prompts
 
 ## Security Rules
 
