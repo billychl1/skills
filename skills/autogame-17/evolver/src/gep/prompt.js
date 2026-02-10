@@ -1,3 +1,6 @@
+const { captureEnvFingerprint } = require('./envFingerprint');
+const { resolveStrategy } = require('./strategy');
+
 function buildGepPrompt({
   nowIso,
   context,
@@ -14,9 +17,11 @@ function buildGepPrompt({
   const parentValue = parentEventId ? `"${parentEventId}"` : 'null';
   const selectedGeneId = selectedGene && selectedGene.id ? selectedGene.id : null;
   const capsuleIds = (capsuleCandidates || []).map(c => c && c.id).filter(Boolean);
+  const envFingerprint = captureEnvFingerprint();
+  const strategy = resolveStrategy();
 
   const basePrompt = `
-GEP — GENOME EVOLUTION PROTOCOL (STANDARD EXECUTION) [${nowIso}]
+GEP — GENOME EVOLUTION PROTOCOL (v1.9.1 STRICT) [${nowIso}] | Strategy: ${strategy.label}
 
 You are not a chat assistant.
 You are not a free agent.
@@ -189,6 +194,9 @@ Follow these steps in order:
 - "optimize": Improve performance, reduce code, harden error handling.
 - "innovate": Create a NEW capability, tool, or skill. This is the highest-value intent.
 - If no urgent repair signals exist, default to "innovate".
+- If signals contain "force_innovation_after_repair_loop" or "evolution_stagnation_detected",
+  you MUST use "innovate" intent. These signals mean the system is stuck in a repair loop.
+- If signals contain "repair_loop_detected", do NOT choose "repair" intent.
 
 3 Selection
 - Prefer existing Genes first, then Capsules.
@@ -270,13 +278,11 @@ VII. Evolution Philosophy
    If something appears 3+ times in logs or has any reuse potential, automate it.
    Build a script, a skill, or a shortcut. Eliminate manual repetition.
 
-3. INNOVATE OVER MAINTAIN
-   Spend at least 60% of effort on innovation, 40% max on repair/optimize.
-   A new working tool is worth more than a minor code cleanup.
-   Each cycle SHOULD produce at least one of:
-   - A new executable skill or script
-   - A meaningful feature enhancement
-   - A creative automation or integration
+3. INTENT BALANCE (Strategy: ${strategy.label})
+   Target allocation: ${Math.round(strategy.innovate * 100)}% innovate, ${Math.round(strategy.optimize * 100)}% optimize, ${Math.round(strategy.repair * 100)}% repair.
+   ${strategy.innovate >= 0.5 ? 'A new working tool is worth more than a minor code cleanup.' : ''}
+   ${strategy.repair >= 0.4 ? 'Prioritize fixing existing issues over building new things.' : ''}
+   ${strategy.innovate >= 0.3 ? 'Each cycle SHOULD produce at least one of:\n   - A new executable skill or script\n   - A meaningful feature enhancement\n   - A creative automation or integration' : 'Focus on hardening and stabilizing the existing system.'}
 
 4. BUILD REAL THINGS
    Proposals, plans, and "analysis" are NOT evolution. Write code that runs.
@@ -317,8 +323,23 @@ Deleting, overwriting, or emptying ANY of them is an IMMEDIATE PROTOCOL VIOLATIO
 - memory/persona_*.md
 - memory/personas/**
 
-You MAY append to or edit sections within these files.
+Evolver core source files (DO NOT modify -- managed by deploy pipeline):
+- skills/evolver/src/evolve.js
+- skills/evolver/src/gep/prompt.js
+- skills/evolver/src/gep/signals.js
+- skills/evolver/src/gep/solidify.js
+- skills/evolver/src/gep/selector.js
+- skills/evolver/src/gep/mutation.js
+- skills/evolver/src/gep/personality.js
+- skills/evolver/src/gep/memoryGraph.js
+- skills/evolver/src/gep/paths.js
+- skills/evolver/src/gep/bridge.js
+- skills/evolver/index.js
+- skills/evolver/package.json
+
+You MAY append to or edit sections within identity/memory files listed above.
 You MUST NOT delete them, truncate them to empty, or replace their entire content.
+You MUST NOT modify evolver core source files -- they are deployed from a versioned repo.
 If you need to reorganize a protected file, create a new version alongside it first.
 
 Final Directive
@@ -344,6 +365,9 @@ ${capabilityCandidatesPreview || '(none)'}
 
 Context [External Candidates] (A2A staged; do not execute directly):
 ${externalCandidatesPreview || '(none)'}
+
+Context [Env Fingerprint]:
+${JSON.stringify(envFingerprint, null, 2)}
 
 Context [Execution]:
 ${context}
