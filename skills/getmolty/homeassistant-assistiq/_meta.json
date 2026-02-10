@@ -1,0 +1,11 @@
+{
+  "owner": "getmolty",
+  "slug": "homeassistant-assistiq",
+  "displayName": "Home Assistant Assist",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1770675918717,
+    "commit": null
+  },
+  "history": []
+}
