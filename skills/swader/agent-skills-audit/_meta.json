@@ -1,0 +1,11 @@
+{
+  "owner": "swader",
+  "slug": "agent-skills-audit",
+  "displayName": "Audit Code",
+  "latest": {
+    "version": "0.1.0",
+    "publishedAt": 1770643402369,
+    "commit": null
+  },
+  "history": []
+}
