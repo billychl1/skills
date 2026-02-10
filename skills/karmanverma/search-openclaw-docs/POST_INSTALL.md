@@ -24,7 +24,7 @@ Use this skill BEFORE searching the web for OpenClaw questions.
 
 ## 3. Custom Trigger Phrases (Optional)
 
-Add to your `openclaw.json` under the skill entry if you want custom triggers:
+Add to your `openclaw.json`:
 
 ```json
 {
@@ -38,25 +38,7 @@ Add to your `openclaw.json` under the skill entry if you want custom triggers:
 }
 ```
 
-## 4. Configure Embeddings (Optional)
-
-For better semantic search, set up an embedding server:
-
-```bash
-export EMBED_URL="http://localhost:8090/v1/embeddings"
-export EMBED_MODEL="text-embedding-3-small"
-```
-
-Then rebuild the index:
-```bash
-node ~/.openclaw/skills/search-openclaw-docs/scripts/docs-index.js rebuild
-```
-
-Without embeddings, the skill still works great using keyword search (FTS5).
-
----
-
-## Quick Test
+## 4. Quick Test
 
 ```bash
 node ~/.openclaw/skills/search-openclaw-docs/scripts/docs-search.js "discord requireMention"

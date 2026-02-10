@@ -1,64 +1,11 @@
 /**
  * File-Level Indexer
- * Builds SQLite index with FTS5 for keyword search + embeddings for vector rerank
+ * Builds SQLite index with FTS5 for keyword search
  */
 
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
 const { extractFileMetadata } = require('./metadata');
-
-const EMBED_URL = process.env.EMBED_URL || 'http://localhost:8090/v1/embeddings';
-const EMBED_MODEL = process.env.EMBED_MODEL || 'amazon.titan-embed-text-v2:0';
-
-/**
- * Get embedding from local server or fallback
- */
-async function getEmbedding(text) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify({
-      input: text.slice(0, 8000),
-      model: EMBED_MODEL
-    });
-    
-    const url = new URL(EMBED_URL);
-    const options = {
-      hostname: url.hostname,
-      port: url.port || 80,
-      path: url.pathname,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data)
-      }
-    };
-    
-    const req = http.request(options, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(body);
-          if (json.data?.[0]?.embedding) {
-            resolve(json.data[0].embedding);
-          } else {
-            reject(new Error('Invalid embedding response'));
-          }
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-    
-    req.on('error', reject);
-    req.setTimeout(30000, () => {
-      req.destroy();
-      reject(new Error('Embedding timeout'));
-    });
-    req.write(data);
-    req.end();
-  });
-}
 
 /**
  * Find all markdown files recursively
@@ -111,8 +58,7 @@ async function buildIndex(docsPath, indexPath, options = {}) {
       title TEXT,
       headers TEXT,
       keywords TEXT,
-      summary TEXT,
-      embedding TEXT
+      summary TEXT
     );
     
     -- FTS5 for fast keyword search
@@ -141,8 +87,8 @@ async function buildIndex(docsPath, indexPath, options = {}) {
   
   // Prepare insert
   const insert = db.prepare(`
-    INSERT INTO files (path, rel_path, title, headers, keywords, summary, embedding)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO files (path, rel_path, title, headers, keywords, summary)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   
   let indexed = 0;
@@ -156,23 +102,13 @@ async function buildIndex(docsPath, indexPath, options = {}) {
       const content = fs.readFileSync(filePath, 'utf8');
       const meta = extractFileMetadata(content, filePath);
       
-      // Get embedding
-      let embedding = null;
-      try {
-        embedding = await getEmbedding(meta.embeddingText);
-      } catch (e) {
-        // Continue without embedding if fails
-        errors++;
-      }
-      
       insert.run(
         filePath,
         relPath,
         meta.title,
         meta.headers.join(' | '),
         meta.keywords.join(' '),
-        meta.summary,
-        embedding ? JSON.stringify(embedding) : null
+        meta.summary
       );
       
       indexed++;
@@ -194,6 +130,5 @@ async function buildIndex(docsPath, indexPath, options = {}) {
 
 module.exports = {
   buildIndex,
-  findMarkdownFiles,
-  getEmbedding
+  findMarkdownFiles
 };
