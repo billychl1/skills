@@ -12,6 +12,7 @@ Examples:
     ./sudoku_fetcher.py https://www.sudokuonline.io/kids/letters-4-4 --letters
 """
 
+import ast
 import requests
 import re
 import random
@@ -51,11 +52,18 @@ def fetch_puzzles(url):
     for puzzle_match in re.finditer(r"\{[^}]+\}", puzzles_str):
         puzzle_str = puzzle_match.group(0)
         # Convert JS object to JSON
-        puzzle_str = puzzle_str.replace("'", '"').replace("false", "False").replace("true", "True")
+        # Convert a small JS object literal to a safe Python literal, then parse.
+        # IMPORTANT: Never execute fetched HTML as code.
+        s = puzzle_str
+        # Quote unquoted JS keys: {foo: 'bar'} -> {"foo": 'bar'}
+        s = re.sub(r'([\{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:', r'\1"\2":', s)
+        # JS -> Python literals
+        s = s.replace("false", "False").replace("true", "True").replace("null", "None")
         try:
-            puzzle = eval(puzzle_str)
-            puzzles.append(puzzle)
-        except:
+            puzzle = ast.literal_eval(s)
+            if isinstance(puzzle, dict):
+                puzzles.append(puzzle)
+        except Exception:
             continue
             
     return puzzles

@@ -64,6 +64,12 @@ def _find_workspace_root() -> Path:
     env = os.environ.get("SUDOKU_WORKSPACE")
     if env:
         return Path(env)
+    
+    # Prefer CWD if it looks like a workspace (handles symlinks correctly)
+    cwd = Path.cwd()
+    if (cwd / "skills").is_dir():
+        return cwd
+
     # Script is at <workspace>/skills/sudoku/scripts/sudoku.py
     d = Path(__file__).resolve().parent
     for _ in range(6):
