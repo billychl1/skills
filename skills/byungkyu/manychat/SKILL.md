@@ -8,6 +8,11 @@ compatibility: Requires network access and valid Maton API key
 metadata:
   author: maton
   version: "1.0"
+  clawdbot:
+    emoji: 🧠
+    requires:
+      env:
+        - MATON_API_KEY
 ---
 
 # ManyChat
@@ -850,9 +855,7 @@ send_response = requests.post(
 | 3021 | Message tag required |
 | 3031 | OTN topic not found |
 
-### Troubleshooting: Invalid API Key
-
-**When you receive a "Invalid API key" error, ALWAYS follow these steps before concluding there is an issue:**
+### Troubleshooting: API Key Issues
 
 1. Check that the `MATON_API_KEY` environment variable is set:
 
@@ -871,8 +874,17 @@ print(json.dumps(json.load(urllib.request.urlopen(req)), indent=2))
 EOF
 ```
 
+### Troubleshooting: Invalid App Name
+
+1. Ensure your URL path starts with `manychat`. For example:
+
+- Correct: `https://gateway.maton.ai/manychat/fb/page/getInfo`
+- Incorrect: `https://gateway.maton.ai/fb/page/getInfo`
+
 ## Resources
 
 - [ManyChat API Documentation](https://api.manychat.com/swagger)
 - [ManyChat API Key Generation Guide](https://help.manychat.com/hc/en-us/articles/14959510331420)
 - [ManyChat Dev Program](https://help.manychat.com/hc/en-us/articles/14281269835548)
+- [Maton Community](https://discord.com/invite/dBfFAcefs2)
+- [Maton Support](mailto:support@maton.ai)
