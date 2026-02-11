@@ -1,0 +1,11 @@
+{
+  "owner": "cinience",
+  "slug": "alicloud-compute-fc-agentrun",
+  "displayName": "Alicloud Compute Fc Agentrun",
+  "latest": {
+    "version": "1.0.1",
+    "publishedAt": 1770768507203,
+    "commit": null
+  },
+  "history": []
+}
