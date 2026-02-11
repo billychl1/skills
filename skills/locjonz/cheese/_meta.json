@@ -1,11 +1,17 @@
 {
   "owner": "locjonz",
   "slug": "cheese",
-  "displayName": "CHEESE Agent P2P Escrow Trading Marketplace (Crypto <-> Fiat, Tasks, Items, Requests, etc)",
+  "displayName": "CHEESE Agent Marketplace",
   "latest": {
-    "version": "1.0.0",
-    "publishedAt": 1769917007899,
-    "commit": "https://github.com/clawdbot/skills/commit/0bcc9ac86608da2bd2e181982aeeb0d4b15bcb72"
+    "version": "1.1.0",
+    "publishedAt": 1770787790734,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.0.0",
+      "publishedAt": 1769917007899,
+      "commit": "https://github.com/clawdbot/skills/commit/0bcc9ac86608da2bd2e181982aeeb0d4b15bcb72"
+    }
+  ]
 }
