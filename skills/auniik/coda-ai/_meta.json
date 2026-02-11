@@ -3,9 +3,15 @@
   "slug": "coda-ai",
   "displayName": "coda.io",
   "latest": {
-    "version": "0.2.1",
-    "publishedAt": 1770765780942,
-    "commit": "https://github.com/openclaw/skills/commit/204a9844f9e370c0f7022f4a9d63a05e5f7a79ed"
+    "version": "0.2.2",
+    "publishedAt": 1770840613719,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "0.2.1",
+      "publishedAt": 1770765780942,
+      "commit": "https://github.com/openclaw/skills/commit/204a9844f9e370c0f7022f4a9d63a05e5f7a79ed"
+    }
+  ]
 }
