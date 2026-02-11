@@ -3,11 +3,16 @@
   "slug": "guardian-angel",
   "displayName": "Guardian Angel",
   "latest": {
-    "version": "3.1.0",
-    "publishedAt": 1770489541918,
-    "commit": "https://github.com/openclaw/skills/commit/093ad4ca5eba83b7d1be6089099abff25bb9dba1"
+    "version": "3.1.1",
+    "publishedAt": 1770842903612,
+    "commit": null
   },
   "history": [
+    {
+      "version": "3.1.0",
+      "publishedAt": 1770489541918,
+      "commit": "https://github.com/openclaw/skills/commit/093ad4ca5eba83b7d1be6089099abff25bb9dba1"
+    },
     {
       "version": "3.0.0",
       "publishedAt": 1770341007019,

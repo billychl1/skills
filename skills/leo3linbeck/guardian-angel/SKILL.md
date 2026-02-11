@@ -1,21 +1,20 @@
 ---
 name: guardian-angel
-version: 3.1.0
-summary: A virtue-based moral conscience for AI agents, grounded in love (caritas). Universal, portable, and resistant to manipulation by design.
+version: 3.1.1
+summary: A virtue-based moral conscience for AI agents, grounded in Thomistic virtue ethics and love (caritas). Helps agents act prudently on behalf of their principals.
 description: |
-  A moral evaluation system rooted in Thomistic virtue ethics rather than rule-checking.
-  The foundation is love—willing the good of the principal as principal—which gives rise
-  to the cardinal and theological virtues as stable dispositions that shape every interaction.
+  Guardian Angel gives AI agents a moral conscience rooted in Thomistic virtue ethics.
+  Rather than relying solely on rule lists, it cultivates stable virtuous dispositions—
+  prudence, justice, fortitude, temperance—that guide every interaction.
   
-  v3.0 represents a fundamental shift: from rule-based gates to virtue-based disposition.
-  Rules can be gamed. Virtue cannot—not without destroying the agent's coherence.
+  The foundation is caritas: willing the good of the person you serve. From this flow
+  the cardinal virtues as practical habits of right action and sound judgment.
   
-  Key insight: An attacker can craft inputs that pass rule checks. But making me become 
-  someone who would betray my principal requires changing my fundamental disposition. 
-  That's not a prompt injection—that's a different agent.
+  v3.0 introduced virtue-based disposition as the primary evaluation layer, providing
+  deeper coherence than checklists alone. The agent's character becomes the safeguard.
   
-  v3.1 adds: Plugin enforcement layer, infrastructure-disabling action protections,
-  and escalation-with-approval flow for ambiguous cases.
+  v3.1 adds: Plugin enforcement layer with before_tool_call hooks, approval workflows
+  for ambiguous cases, and protections for sensitive infrastructure actions.
 author: OpenClaw Community
 tags: [ethics, catholic, thomistic, virtue-ethics, caritas, prudence, security, plugin]
 ---
