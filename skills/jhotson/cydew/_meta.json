@@ -3,9 +3,15 @@
   "slug": "cydew",
   "displayName": "Cydew",
   "latest": {
-    "version": "1.0.1",
-    "publishedAt": 1770762189285,
-    "commit": "https://github.com/openclaw/skills/commit/bda7da40a3bdd0f1ae2377d54959a061eeb8595b"
+    "version": "1.0.2",
+    "publishedAt": 1770821689845,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.0.1",
+      "publishedAt": 1770762189285,
+      "commit": "https://github.com/openclaw/skills/commit/bda7da40a3bdd0f1ae2377d54959a061eeb8595b"
+    }
+  ]
 }
