@@ -1,6 +1,5 @@
 ---
 name: openclaw-signet
-description: "Cryptographic skill verification. Sign installed skills with SHA-256 content hashes and verify they haven't been tampered with. Detects modified, added, and removed files within skill directories. Free alert layer — upgrade to openclaw-signet-pro for rejection, quarantine, and trust chain restoration."
 user-invocable: true
 metadata: {"openclaw":{"emoji":"🔏","requires":{"bins":["python3"]},"os":["darwin","linux","win32"]}}
 ---
@@ -13,7 +12,6 @@ Cryptographic verification for installed skills. Sign skills at install time, ve
 
 You install a skill and it works. Days later, a compromised process modifies files inside the skill directory — injecting code, altering behavior, adding exfiltration. All current defenses are heuristic (regex pattern matching). Nothing mathematically verifies that installed code is unchanged.
 
-**Need automated enforcement?** Upgrade to [openclaw-signet-pro](https://github.com/AtlasPA/openclaw-signet-pro) for rejection, quarantine, and trust chain restoration.
 
 ## Commands
 
