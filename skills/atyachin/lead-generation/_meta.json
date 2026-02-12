@@ -3,11 +3,16 @@
   "slug": "lead-generation",
   "displayName": "Lead Generation",
   "latest": {
-    "version": "1.2.0",
-    "publishedAt": 1770884573551,
-    "commit": "https://github.com/openclaw/skills/commit/bd259c79d60833e16de3134b139ed77acd48df30"
+    "version": "2.1.1",
+    "publishedAt": 1770890687636,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.2.0",
+      "publishedAt": 1770884573551,
+      "commit": "https://github.com/openclaw/skills/commit/bd259c79d60833e16de3134b139ed77acd48df30"
+    },
     {
       "version": "1.0.0",
       "publishedAt": 1770848770892,
