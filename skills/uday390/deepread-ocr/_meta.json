@@ -1,13 +1,18 @@
 {
   "owner": "uday390",
   "slug": "deepread-ocr",
-  "displayName": "Clawdhub Skill",
+  "displayName": "DeepRead OCR",
   "latest": {
-    "version": "1.0.4",
-    "publishedAt": 1770790297447,
-    "commit": "https://github.com/openclaw/skills/commit/5cecf6e3b065678d96ba3be7b0bd1b738779287e"
+    "version": "1.0.6",
+    "publishedAt": 1770875141310,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.0.4",
+      "publishedAt": 1770790297447,
+      "commit": "https://github.com/openclaw/skills/commit/5cecf6e3b065678d96ba3be7b0bd1b738779287e"
+    },
     {
       "version": "1.0.3",
       "publishedAt": 1770746256451,

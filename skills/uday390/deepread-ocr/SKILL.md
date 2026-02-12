@@ -1,5 +1,6 @@
 ---
 name: deepread
+title: DeepRead OCR
 description: AI-native OCR platform that turns documents into high-accuracy data in minutes. Using multi-model consensus, DeepRead achieves 97%+ accuracy and flags only uncertain fields for Human-in-the-Loop (HIL) review—reducing manual work from 100% to 5-10%. Zero prompt engineering required.
 disable-model-invocation: true
 metadata:
