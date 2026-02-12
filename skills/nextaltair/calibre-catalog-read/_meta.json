@@ -1,0 +1,11 @@
+{
+  "owner": "nextaltair",
+  "slug": "calibre-catalog-read",
+  "displayName": "Calibre Catalog Read",
+  "latest": {
+    "version": "0.1.0",
+    "publishedAt": 1770824117205,
+    "commit": null
+  },
+  "history": []
+}
