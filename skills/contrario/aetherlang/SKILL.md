@@ -1,155 +1,152 @@
----
-name: aetherlang
-description: Execute AI workflow orchestration flows using the AetherLang Ω DSL. Run multi-step AI pipelines for recipes, business strategy, market analysis, molecular gastronomy, research, and more via natural language or DSL code.
-metadata: {"openclaw": {"emoji": "⚡", "homepage": "https://neurodoc.app/aether-nexus-omega-dsl"}}
----
-
 # AetherLang Ω — AI Workflow Orchestration Skill
 
-AetherLang Ω is a domain-specific language (DSL) for orchestrating multi-step AI workflows. Instead of single prompts, it chains specialized AI nodes (Guard → Plan → Chef → Summarize) into powerful pipelines.
+> Production-grade DSL for building AI workflows with 39 node types and enterprise security.
 
-## What It Does
+**Source Code**: [github.com/contrario/aetherlang](https://github.com/contrario/aetherlang)
+**Homepage**: [neurodoc.app/aether-nexus-omega-dsl](https://neurodoc.app/aether-nexus-omega-dsl)
+**Author**: NeuroAether (info@neurodoc.app)
+**License**: MIT
 
-Execute AI workflow flows via the AetherLang API. Each flow chains multiple specialized nodes:
+## Privacy & Data Handling
 
-- **chef**: Michelin-level recipe generation with food costing, HACCP safety, and MacYuFBI flavor balance
-- **molecular**: APEIRON Molecular Architect — scientific gastronomy with physics engines and FDA safety checks
-- **apex**: Nobel-level business strategy with ROI/NPV/IRR projections and risk matrices
-- **oracle**: OMNI-COMPUTE adversarial forecasting engine with Nash equilibrium simulation
-- **market**: McKinsey-level market intelligence with TAM/SAM/SOM and Porter's 5 Forces
-- **research**: Deep research analysis with confidence levels and cited sources
-- **assembly**: GAIA Brain 12-neuron multi-agent system for multi-perspective analysis
-- **consult**: NEXUS-7 architectural blueprinting for system design
-- **balance**: Nutritional biochemistry and flavor science analysis
-- **vision**: Culinary presentation and food styling analysis
+⚠️ **External API Notice**: This skill sends user-provided flow code and query text to the AetherLang API at `api.neurodoc.app` for processing. By using this skill, you consent to this data transmission.
 
-## How To Use
+- **What is sent**: Flow DSL code and natural language queries only
+- **What is NOT sent**: No credentials, API keys, personal files, or system data
+- **Data retention**: Queries are processed in real-time and not stored permanently
+- **Hosting**: Hetzner EU servers (GDPR compliant)
+- **No credentials required**: This skill uses the free tier (100 req/hour). No API keys needed.
 
-### Quick Flows (Natural Language)
+Users should avoid including sensitive personal information, passwords, or confidential data in queries.
 
-When the user asks for any of the above domains, construct and execute a flow:
-```bash
-curl -s --max-time 120 -X POST https://neurodoc.app/api/aetherlang/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "flow Q { using target \"neuroaether\" version \">=0.2\"; input text query; node G: guard mode=\"MODERATE\"; node C: chef cuisine=\"USER_CUISINE\", difficulty=\"USER_DIFFICULTY\", servings=USER_SERVINGS; G -> C; output text r from C; }",
-    "query": "USER_QUERY"
-  }'
+## Overview
+
+AetherLang Ω is a domain-specific language for AI that orchestrates multi-model workflows with built-in safety, debugging, and real-time collaboration.
+
+All user inputs are validated and sanitized server-side before processing. The security middleware source code is publicly available in the [GitHub repository](https://github.com/contrario/aetherlang/blob/main/aetherlang/middleware/security.py).
+
+## Supported Engines
+
+| Engine | Trigger Keywords | Description |
+|--------|-----------------|-------------|
+| `chef` | recipe, cook, food | Michelin-grade recipes with HACCP, costs, MacYuFBI |
+| `molecular` | molecular, spherification | Molecular gastronomy techniques |
+| `apex` | strategy, business, analysis | Nobel-level analysis (McKinsey/HBR quality) |
+| `assembly` | debate, perspectives, council | 26 AI archetypes with Gandalf Veto |
+| `consulting` | consulting, SWOT, roadmap | Strategic consulting with KPIs |
+| `lab` | science, research, experiment | Scientific analysis across 50 domains |
+| `marketing` | campaign, viral, social media | Campaign generation with content calendars |
+| `oracle` | lottery, OPAP, lucky numbers | Greek lottery statistics and analysis |
+| `cyber` | security, threat, vulnerability | Threat assessment with defense strategies |
+| `academic` | paper, arXiv, PubMed | Multi-source research synthesis |
+| `vision` | image, analyze, detect | Computer vision analysis |
+| `brain` | think, analyze, comprehensive | General AI analysis |
+
+## API Endpoint
+```
+POST https://api.neurodoc.app/aetherlang/execute
+Content-Type: application/json
 ```
 
-Replace USER_CUISINE, USER_DIFFICULTY, USER_SERVINGS, and USER_QUERY with the user's request.
-
-### Domain Templates
-
-**Recipe Generation:**
-```
-flow Recipe {
-  using target "neuroaether" version ">=0.2";
-  input text query;
-  node G: guard mode="MODERATE";
-  node C: chef cuisine="CUISINE", difficulty="DIFFICULTY", servings=SERVINGS;
-  G -> C;
-  output text r from C;
+### Request Format
+```json
+{
+  "code": "<aetherlang_flow>",
+  "query": "<user_input>"
 }
 ```
 
-**Business Strategy:**
+### Building Flows
+```
+flow <FlowName> {
+  using target "neuroaether" version ">=0.2";
+  input text query;
+  node <NodeName>: <engine_type> <parameters>;
+  output text result from <NodeName>;
+}
+```
+
+#### Chef Flow
+```
+flow Chef {
+  using target "neuroaether" version ">=0.2";
+  input text query;
+  node Chef: chef cuisine="auto", difficulty="medium", servings=4, language="el";
+  output text recipe from Chef;
+}
+```
+
+#### APEX Strategy Flow
 ```
 flow Strategy {
   using target "neuroaether" version ">=0.2";
   input text query;
-  node G: guard mode="STRICT";
-  node R: research depth="comprehensive";
-  node A: apex mode="standard";
-  G -> R -> A;
-  output text r from A;
+  node Guard: guard mode="MODERATE";
+  node Planner: plan steps=4;
+  node LLM: apex model="gpt-4o", temp=0.7;
+  Guard -> Planner -> LLM;
+  output text report from LLM;
 }
 ```
 
-**Market Analysis:**
-```
-flow Market {
-  using target "neuroaether" version ">=0.2";
-  input text query;
-  node G: guard mode="MODERATE";
-  node M: market scope="SCOPE", timeframe="TIMEFRAME";
-  G -> M;
-  output text r from M;
-}
-```
+## Security Architecture
 
-**Forecasting:**
-```
-flow Forecast {
-  using target "neuroaether" version ">=0.2";
-  input text query;
-  node G: guard mode="MODERATE";
-  node O: oracle timeframe="TIMEFRAME";
-  G -> O;
-  output text r from O;
-}
-```
+Security middleware source code: [middleware/security.py](https://github.com/contrario/aetherlang/blob/main/aetherlang/middleware/security.py)
 
-**Full Consulting Pipeline:**
-```
-flow FullConsult {
-  using target "neuroaether" version ">=0.2";
-  input text query;
-  node G: guard mode="STRICT";
-  node R: research depth="comprehensive";
-  node C: consult domain="business", framework="SWOT";
-  node M: market scope="global", timeframe="2026";
-  node A: apex mode="standard";
-  G -> R -> C -> M -> A;
-  output text r from A;
-}
-```
+### Input Validation (Server-Side)
+- **Field whitelist**: Only `code`, `query`, `language` fields accepted
+- **Length enforcement**: Query max 5000 chars, Code max 10000 chars, Body max 50KB
+- **Type validation**: All fields type-checked before processing
 
-## Response Handling
+### Injection Prevention
+Blocks: code execution (`eval`, `exec`), SQL injection, XSS, template injection, OS commands, prompt manipulation.
 
-The API returns JSON:
+### Rate Limiting
+- **Free tier**: 100 req/hour, 10 req/10s burst (no credentials needed)
+
+### Safety Guards
+- **GUARD node**: STRICT/MODERATE/PERMISSIVE content filtering
+- **Gandalf Veto**: AI safety review on Assembly outputs
+- **Audit logging**: All blocked requests logged
+
+## Response Structure
 ```json
 {
   "status": "success",
+  "flow_name": "Chef",
   "result": {
     "outputs": {
-      "r": {
-        "output": "... the AI-generated content ..."
+      "recipe": {
+        "response": "{ structured JSON }",
+        "engine": "chef",
+        "model": "gpt-4o"
       }
-    }
+    },
+    "duration_seconds": 58.9
   }
 }
 ```
 
-Extract `result.outputs.r.output` for the final content. If the response is long, summarize key points for the user.
+## Error Responses
 
-## Important Notes
+| Code | Meaning |
+|------|---------|
+| 400 | Invalid input or injection detected |
+| 413 | Request too large |
+| 429 | Rate limit exceeded |
+| 500 | Server error |
 
-- The API endpoint is: `https://neurodoc.app/api/aetherlang/execute`
-- Timeout: set --max-time to 120 seconds (complex flows take 15-60s)
-- The API is free during beta
-- Flows are executed server-side; no API keys needed from the user
-- All 39 node types are available: guard, plan, llm, summarize, extract, translate, classify, sentiment, compare, merge, template, code, validate, format, enrich, filter, route, transform, score, rank, cluster, embed, search, cache, log, alert, webhook, store, chef, molecular, balance, vision, assembly, oracle, apex, research, consult, market, visualizer
+## Languages
 
-## Examples
+- **English** (default)
+- **Greek** (Ελληνικά) — add `language="el"` to any node
 
-User: "Make me a Greek moussaka recipe"
-→ Use chef node with cuisine="greek"
+## Technology
 
-User: "Analyze the European AI market"
-→ Use market node with scope="europe"
+- **Backend**: FastAPI + Python 3.12 ([source](https://github.com/contrario/aetherlang))
+- **AI Models**: GPT-4o via OpenAI
+- **Parser**: 39 node types with validation
+- **Hosting**: Hetzner EU (GDPR compliant)
 
-User: "Should I start an AI SaaS company?"
-→ Use full consulting pipeline (research → consult → market → apex)
-
-User: "Predict AI regulation trends for 2027"
-→ Use oracle node with timeframe="24months"
-
-User: "Create a molecular gastronomy dish with olive oil"
-→ Use molecular node with complexity="advanced"
-
-## Links
-
-- Live Demo: https://neurodoc.app/aether-nexus-omega-dsl
-- GitHub: https://github.com/contrario/aetherlang
-- Documentation: https://github.com/contrario/aetherlang#readme
+---
+*Built by NeuroAether — From Kitchen to Code* 🧠
