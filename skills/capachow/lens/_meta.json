@@ -3,11 +3,16 @@
   "slug": "lens",
   "displayName": "LENS",
   "latest": {
-    "version": "0.4.0",
-    "publishedAt": 1770506194509,
-    "commit": "https://github.com/openclaw/skills/commit/5d56a454c477bb713f1382fac44a568f015cf576"
+    "version": "0.6.3",
+    "publishedAt": 1770804433131,
+    "commit": null
   },
   "history": [
+    {
+      "version": "0.4.0",
+      "publishedAt": 1770506194509,
+      "commit": "https://github.com/openclaw/skills/commit/5d56a454c477bb713f1382fac44a568f015cf576"
+    },
     {
       "version": "0.1.1",
       "publishedAt": 1770464068234,

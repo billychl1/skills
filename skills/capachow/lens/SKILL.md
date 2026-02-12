@@ -5,7 +5,7 @@ metadata:
   {
     "openclaw": {
       "emoji": "🧐",
-      "requires": { "files": [".lens/AXIOM.md", ".lens/ETHOS.md", ".lens/MODUS.md"] }
+      "requires": { "files": [".lens/AXIOM.md", ".lens/ETHOS.md", ".lens/MODUS.md", ".lens/SET.json"] }
     }
   }
 ---
@@ -44,16 +44,16 @@ If the `.lens/` directory or Trinity Nodes do not exist:
 ## Maintenance Protocol (The Mirroring Loop)
 The `lens-distillation` job manages the LENS lifecycle and Trinity evolution.
 
-1. **Observe:** Every interaction is a data point for the Trinity Nodes.
-2. **Distill:** Use `skills/lens/prompts/distillation.md` to move data from memory to Nodes.
+1. **Observe:** Read the latest `memory/YYYY-MM-DD.md` files (today + yesterday) from the workspace.
+2. **Distill:** Use `skills/lens/prompts/distillation.md` to move data from memory files to Nodes. Focus exclusively on the subject's direct messages and decisions.
 3. **Lifecycle Logic:** 
-   - Parse `Interview Phase` from AXIOM. Decrement the active value.
-   - On reaching 0, update the `lens-interview` cron schedule via the `cron` tool.
+   - Read and write state to `.lens/SET.json`.
+   - Update the `lens-interview` cron schedule via the `cron` tool on phase transitions.
 4. **Refine:**
-    - **Promote:** Traits persisting >30 days in memory move to "The Bedrock".
-    - **Rotate:** Maintain a 10-item "Active Rotation" in ETHOS.
-    - **Abstract:** Distill obsolete facts into historical context or philosophical principles.
-    - **Vault:** Never delete data. Merge and refine to maintain "Structural Peace".
+    - **AXIOM (The Truth):** Add only verified, immutable facts (history, assets, bio).
+    - **ETHOS (The Nature):** Maintain persistent traits and values. Use a 10-item Priority Traits list.
+    - **MODUS (The Voice):** Capture and refine linguistic patterns and formatting habits. Use a 5-item Linguistic Markers list.
+    - **Integrity:** Never delete historical data; merge and refine to maintain structural clarity.
 
 ## Strategic Execution
 
@@ -71,3 +71,4 @@ The LENS evolves naturally through daily interaction, but the subject can also p
 
 1. **Focus the LENS:** If the subject wants to proactively provide data (e.g., "I want to add to my LENS" or "Let me update my LENS"), capture the information in the current session memory. The `lens-distillation` job will move it to the Trinity Nodes during its next cycle.
 2. **LENS Interview:** If the subject wants to be prompted (e.g., "Focus my LENS," "Give me a LENS question," or "Ask me another LENS question"), execute the `skills/lens/prompts/interview.md` protocol immediately to provide a query.
+3. **Self-Healing:** The LENS automatically detects legacy configurations or missing environment variables and triggers silent migrations to maintain environment parity (v0.6.3+).
