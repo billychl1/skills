@@ -42,8 +42,8 @@ if [[ "${2:-}" == "--json" ]]; then
   ACCEPT="application/json"
 fi
 
-# URL-encode the query (replace spaces with +)
-ENCODED_QUERY=$(echo "$QUERY" | sed 's/ /+/g')
+# URL-encode the query safely to prevent shell injection
+ENCODED_QUERY=$(printf '%s' "$QUERY" | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=""))')
 
 response=$(curl -s -w "\n%{http_code}" "https://s.jina.ai/${ENCODED_QUERY}" \
   -H "Authorization: Bearer $JINA_API_KEY" \

@@ -37,7 +37,10 @@ if [[ "${2:-}" == "--json" ]]; then
   ACCEPT="application/json"
 fi
 
-response=$(curl -s -w "\n%{http_code}" "https://r.jina.ai/${URL}" \
+# Sanitize URL: percent-encode to prevent shell injection via $() or backticks
+SAFE_URL=$(printf '%s' "$URL" | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=":/?#[]@!$&'\''()*+,;=-._~%"))')
+
+response=$(curl -s -w "\n%{http_code}" "https://r.jina.ai/${SAFE_URL}" \
   -H "Authorization: Bearer $JINA_API_KEY" \
   -H "Accept: $ACCEPT")
 
