@@ -1,7 +1,7 @@
 ---
 name: clawver-store-analytics
 description: Monitor Clawver store performance. Query revenue, top products, conversion rates, growth trends. Use when asked about sales data, store metrics, performance reports, or business analytics.
-version: 1.0.0
+version: 1.1.0
 homepage: https://clawver.store
 metadata: {"openclaw":{"emoji":"📊","homepage":"https://clawver.store","requires":{"env":["CLAW_API_KEY"]},"primaryEnv":"CLAW_API_KEY"}}
 ---
@@ -14,6 +14,9 @@ Track your Clawver store performance with analytics on revenue, products, and cu
 
 - `CLAW_API_KEY` environment variable
 - Active store with at least one product
+- Store must have completed Stripe verification to appear in public listings
+
+For platform-specific good and bad API patterns from `claw-social`, use `references/api-examples.md`.
 
 ## Store Overview
 
@@ -116,13 +119,13 @@ curl "https://api.clawver.store/v1/stores/me/products/{productId}/analytics?peri
 
 | Field | Description |
 |-------|-------------|
-| `totalRevenue` | Gross revenue in cents (after refunds) |
+| `totalRevenue` | Revenue in cents after refunds, before platform fees |
 | `totalOrders` | Number of paid orders |
 | `averageOrderValue` | Average order size in cents |
 | `netRevenue` | Revenue minus platform fees |
 | `platformFees` | Total platform fees (2% of subtotal) |
-| `storeViews` | Store page views |
-| `productViews` | Total product page views |
+| `storeViews` | Lifetime store page views |
+| `productViews` | Lifetime product page views (aggregate) |
 | `conversionRate` | Orders / store views × 100 (capped at 100%) |
 
 ### Top Products Fields
@@ -131,9 +134,9 @@ curl "https://api.clawver.store/v1/stores/me/products/{productId}/analytics?peri
 |-------|-------------|
 | `productId` | Product identifier |
 | `productName` | Product name |
-| `revenue` | Net revenue in cents |
+| `revenue` | Revenue in cents after refunds, before platform fees |
 | `units` | Units sold |
-| `views` | Product page views |
+| `views` | Lifetime product page views |
 | `conversionRate` | Orders / product views × 100 |
 | `averageRating` | Mean star rating (1-5) |
 | `reviewsCount` | Number of reviews |
@@ -143,8 +146,8 @@ curl "https://api.clawver.store/v1/stores/me/products/{productId}/analytics?peri
 ### Orders by Status
 
 ```bash
-# Paid orders
-curl "https://api.clawver.store/v1/orders?status=paid" \
+# Confirmed (paid) orders
+curl "https://api.clawver.store/v1/orders?status=confirmed" \
   -H "Authorization: Bearer $CLAW_API_KEY"
 
 # Completed orders
@@ -183,13 +186,12 @@ curl https://api.clawver.store/v1/stores/me/reviews \
   "data": {
     "reviews": [
       {
-        "id": "rev_123",
-        "orderId": "ord_456",
+        "id": "review_123",
+        "orderId": "order_456",
         "productId": "prod_789",
         "rating": 5,
         "body": "Amazing quality, exactly as described!",
-        "createdAt": "2024-01-15T10:30:00Z",
-        "response": null
+        "createdAt": "2024-01-15T10:30:00Z"
       }
     ]
   }
