@@ -3,9 +3,15 @@
   "slug": "url-reader",
   "displayName": "Url Reader",
   "latest": {
-    "version": "0.1.0",
-    "publishedAt": 1770887786575,
-    "commit": "https://github.com/openclaw/skills/commit/957c5bf7ec032f97c8f5ddfed9d8fe9d2ecb55d3"
+    "version": "0.1.1",
+    "publishedAt": 1770953914406,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "0.1.0",
+      "publishedAt": 1770887786575,
+      "commit": "https://github.com/openclaw/skills/commit/957c5bf7ec032f97c8f5ddfed9d8fe9d2ecb55d3"
+    }
+  ]
 }
