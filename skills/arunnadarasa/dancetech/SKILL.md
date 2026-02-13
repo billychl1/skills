@@ -52,6 +52,52 @@ PRIVY_APP_ID=your_privy_app_id        # optional
 PRIVY_APP_SECRET=your_privy_secret   # optional
 ```
 
+## Security
+
+This skill includes a **Security Railcard** system to prevent API key exposure in automated workflows.
+
+### What's Included
+
+- `scripts/tools/security_railcard.js` — scans files for leaked secrets
+- `scripts/tools/pre-commit-security` — Git pre-commit hook that blocks commits containing real API keys
+- Automatic scanning in `dancetech_post.js` before pushing to GitHub
+
+### Setup
+
+1. After installing the skill, ensure the pre-commit hook is active:
+   ```bash
+   cd /path/to/agent/workspace
+   chmod +x scripts/tools/security-check.js   # Make executable (required on some systems)
+   ln -sf scripts/tools/security-check.js .git/hooks/pre-commit
+   ```
+
+2. Test the hook:
+   ```bash
+   echo "const key = 'sk-or-v1-fakekey1234567890abcdefghijklmnopqrstuvwxyz';" > test_secret.js
+   git add test_secret.js
+   git commit -m "test"  # Should be blocked
+   ```
+
+3. The automation scripts already call the security railcard before pushing to GitHub. No further configuration needed.
+
+### If the Railcard Blocks You
+
+- Identify the flagged file and line from the error message
+- Replace hardcoded secrets with environment variables: `process.env.YOUR_KEY`
+- Move actual secrets to `.env` (which is gitignored)
+- Use placeholder values in `.env.example` and documentation
+
+### Incident Response (Key Exposure)
+
+If a key was ever exposed:
+1. Immediately revoke the key at the provider
+2. Generate a new key
+3. Update all `.env` files in your agent workspaces
+4. Verify no config files contain hardcoded secrets
+5. Run `node scripts/tools/security_railcard.js .` to scan the entire workspace
+
+See full documentation: `SECURITY_RAILCARD.md` in the skill root.
+
 ## Usage
 
 ### 1. Install the Skill

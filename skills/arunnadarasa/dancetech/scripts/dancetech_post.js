@@ -207,6 +207,26 @@ function pushToGitHub(repoName, files) {
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
       fs.writeFileSync(fullPath, content, 'utf8');
     });
+
+    // 🛡️ SECURITY RAILCARD: Scan files before commit
+    console.log('🛡️  Running security railcard scan...');
+    const railcardPath = path.join(WORKSPACE, 'scripts', 'tools', 'security_railcard.js');
+    try {
+      const scanCmd = `node "${railcardPath}" "${repoDir}"`;
+      const scanResult = execSync(scanCmd, { encoding: 'utf8' });
+      console.log(scanResult);
+      if (scanResult.includes('SECURITY ALERT') || scanResult.includes('❌')) {
+        throw new Error('Security railcard blocked push due to potential secrets.');
+      }
+    } catch (err) {
+      if (err.message && err.message.includes('No secrets')) {
+        console.log('Security scan passed.');
+      } else {
+        console.error('SECURITY SCAN FAILED:', err.message);
+        throw new Error('Security railcard blocked push. Aborting.');
+      }
+    }
+
     execSync('git add -A', { cwd: repoDir, stdio: 'inherit', env: gitEnv });
     execSync('git commit -m "Initial commit: DanceTech project"', { cwd: repoDir, stdio: 'ignore', env: gitEnv });
     execSync('git push origin main', { cwd: repoDir, stdio: 'inherit', env: gitEnv });
