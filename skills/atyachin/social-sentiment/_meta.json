@@ -1,11 +1,17 @@
 {
   "owner": "atyachin",
   "slug": "social-sentiment",
-  "displayName": "Sentiment Analysis — Brand Monitoring across Twitter, Reddit & Instagram",
+  "displayName": "Social Sentiment",
   "latest": {
-    "version": "1.2.0",
-    "publishedAt": 1770848752732,
-    "commit": "https://github.com/openclaw/skills/commit/a53843a379a37811bd12492f9bbd5382acdcfa44"
+    "version": "1.4.0",
+    "publishedAt": 1770892695608,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.2.0",
+      "publishedAt": 1770848752732,
+      "commit": "https://github.com/openclaw/skills/commit/a53843a379a37811bd12492f9bbd5382acdcfa44"
+    }
+  ]
 }
