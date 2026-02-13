@@ -3,9 +3,15 @@
   "slug": "alicloud-compute-ecs",
   "displayName": "Alicloud Compute Ecs",
   "latest": {
-    "version": "1.0.1",
-    "publishedAt": 1770768501918,
-    "commit": "https://github.com/openclaw/skills/commit/96e8386bfc12bd6c78c916e7ac25e0731a6c1ebe"
+    "version": "1.0.2",
+    "publishedAt": 1770973206944,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.0.1",
+      "publishedAt": 1770768501918,
+      "commit": "https://github.com/openclaw/skills/commit/96e8386bfc12bd6c78c916e7ac25e0731a6c1ebe"
+    }
+  ]
 }
