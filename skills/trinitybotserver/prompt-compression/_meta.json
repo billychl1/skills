@@ -1,0 +1,11 @@
+{
+  "owner": "trinitybotserver",
+  "slug": "prompt-compression",
+  "displayName": "Prompt Compression",
+  "latest": {
+    "version": "1.0.1",
+    "publishedAt": 1771018408841,
+    "commit": null
+  },
+  "history": []
+}
