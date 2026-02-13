@@ -62,17 +62,19 @@ Use gcalcli `search` only as a fallback when:
 - Default: use `--nocolor` to reduce formatting noise and tokens.
 - Use `--tsv` only if you must parse/dedupe/sort.
 
-## Actions policy (optimized)
+## Actions policy (optimized for conversational speed)
 
-### Unambiguous actions run immediately
-For cancel/delete/edit actions:
-- Do NOT ask for confirmation by default.
-- Run immediately ONLY if the target event is unambiguous:
-  - single clear match in a tight window, OR
-  - user specified exact date+time and a matching event exists.
+This skill is designed for personal assistant use where the user expects fast, low-friction calendar management. The confirmation policy below is an intentional UX choice — see README.md for rationale and safety guards.
 
-If ambiguous (multiple candidates):
-- Ask a short disambiguation question listing the smallest set of candidates (1-3 lines) and wait.
+### Unambiguous actions: execute immediately
+For cancel/delete/edit actions, skip confirmation when ALL of these hold:
+- The user explicitly requested the action (e.g. "delete my dentist appointment").
+- Exactly one event matches in a tight time window.
+- The match is unambiguous (single clear result on an exact date, or user specified date+time).
+
+### Ambiguous actions: always ask first
+If multiple candidates match, or the match is uncertain:
+- Ask a short disambiguation question listing the candidates (1-3 lines) and wait for the user's choice.
 
 ### Create events: overlap check MUST be cross-calendar (non-ignored scope)
 When creating an event:
@@ -88,11 +90,11 @@ When creating an event:
 - **`import` via stdin** — use ONLY when you need recurrence (RRULE) or free/busy (TRANSP:TRANSPARENT). Pipe ICS content via stdin; NEVER write temp .ics files (working directory is unreliable in exec sandbox).
 - **`quick`** — avoid unless user explicitly asks for natural-language add. Less deterministic.
 
-### Deletes must be reliable
-- Use non-interactive delete with `--iamaexpert` (a `delete` subcommand flag — goes AFTER `delete`).
-- Verify once via agenda in the same tight window.
+### Deletes must be verified
+- Use non-interactive delete with `--iamaexpert` (a `delete` subcommand flag — goes AFTER `delete`). This is gcalcli's built-in flag for non-interactive/scripted deletion.
+- Always verify via agenda in the same tight window after deletion.
 - If verification still shows the event, do one retry with `--refresh`.
-- Never claim success unless verification confirms.
+- Never claim success unless verification confirms the event is gone.
 
 ## Canonical commands
 
@@ -142,7 +144,7 @@ END:VCALENDAR' | gcalcli import --calendar "<Cal>"
 - Add `--reminder "TIME"` flag(s) to set reminders (overrides any VALARM in ICS).
 - All import-specific flags (`--use-legacy-import`, `--verbose`, etc.) go AFTER `import`.
 
-### Delete (no confirmation if unambiguous)
+### Delete (with post-delete verification)
 - Locate via agenda (preferred):
   - `gcalcli --nocolor agenda <dayStart> <dayEnd>` (exact date)
   - `gcalcli --nocolor agenda today +14d` (weekday)
