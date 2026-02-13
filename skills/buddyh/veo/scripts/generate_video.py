@@ -10,6 +10,8 @@ Generate videos using Google's Veo API.
 
 Usage:
     uv run generate_video.py --prompt "your video description" --filename "output.mp4" [--duration 8] [--aspect-ratio 16:9] [--model MODEL]
+    uv run generate_video.py --prompt "your video description" --filename "output.mp4" --input-image "/path/to/image.png" [--duration 8] [--aspect-ratio 16:9] [--model MODEL]
+    uv run generate_video.py --prompt "your video description" --filename "output.mp4" -i img1.png -i img2.png -i img3.png [--duration 8] [--aspect-ratio 16:9]
 """
 
 import argparse
@@ -32,6 +34,12 @@ def main():
         "--filename", "-f",
         required=True,
         help="Output filename (e.g., output.mp4)"
+    )
+    parser.add_argument(
+        "--input-image", "-i",
+        action="append",
+        default=[],
+        help="Input image file for image-to-video generation (repeatable, up to 3)"
     )
     parser.add_argument(
         "--duration", "-d",
@@ -68,17 +76,63 @@ def main():
     print(f"  Prompt: {args.prompt}")
     print(f"  Duration: {args.duration}s")
     print(f"  Aspect ratio: {args.aspect_ratio}")
+    for img in args.input_image:
+        print(f"  Input image: {img}")
+
+    # Validate input images
+    if args.input_image and len(args.input_image) > 3:
+        print("Error: Maximum 3 reference images allowed", file=sys.stderr)
+        sys.exit(1)
 
     try:
-        # Start the video generation
-        operation = client.models.generate_videos(
-            model=args.model,
-            prompt=args.prompt,
-            config=types.GenerateVideosConfig(
-                duration_seconds=args.duration,
-                aspect_ratio=args.aspect_ratio,
+        # Handle reference images
+        reference_images = []
+        if args.input_image:
+            for image_path_str in args.input_image:
+                image_path = Path(image_path_str)
+                if not image_path.exists():
+                    print(f"Error: Image file not found: {image_path}", file=sys.stderr)
+                    sys.exit(1)
+
+                print(f"Loading image: {image_path}")
+                with open(image_path, "rb") as f:
+                    image_data = f.read()
+
+                # Create image object
+                image_obj = types.Image(
+                    imageBytes=image_data,
+                    mimeType="image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
+                )
+
+                # Create VideoGenerationReferenceImage
+                ref_image = types.VideoGenerationReferenceImage(
+                    image=image_obj,
+                    reference_type="asset"
+                )
+                reference_images.append(ref_image)
+
+        # Generate video
+        if reference_images:
+            print("Generating video with reference images...")
+            operation = client.models.generate_videos(
+                model=args.model,
+                prompt=args.prompt,
+                config=types.GenerateVideosConfig(
+                    duration_seconds=args.duration,
+                    aspect_ratio=args.aspect_ratio,
+                    reference_images=reference_images,
+                )
             )
-        )
+        else:
+            # Text-to-video
+            operation = client.models.generate_videos(
+                model=args.model,
+                prompt=args.prompt,
+                config=types.GenerateVideosConfig(
+                    duration_seconds=args.duration,
+                    aspect_ratio=args.aspect_ratio,
+                )
+            )
 
         print(f"Operation started: {operation.name}")
 
@@ -90,8 +144,14 @@ def main():
             operation = client.operations.get(operation)
 
         print("Video generation complete!")
+        print(f"Response type: {type(operation.response)}")
+        print(f"Response dir: {[m for m in dir(operation.response) if not m.startswith('_')]}")
 
         # Get the generated video
+        if not operation.response.generated_videos:
+            print(f"Error: No generated_videos in response. Response: {operation.response}", file=sys.stderr)
+            sys.exit(1)
+
         generated_video = operation.response.generated_videos[0]
 
         # Download the video
