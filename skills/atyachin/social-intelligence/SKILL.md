@@ -7,6 +7,7 @@ metadata:
     "openclaw":
       {
         "requires": { "bins": ["mcporter"], "skills": ["xpoz-setup"], "network": ["mcp.xpoz.ai"], "credentials": "Xpoz account (free tier) — auth via xpoz-setup skill (OAuth 2.1)" },
+        "install": [{"id": "node", "kind": "node", "package": "mcporter", "bins": ["mcporter"], "label": "Install mcporter (npm)"}],
       },
   }
 tags:
@@ -41,6 +42,10 @@ Xpoz turns your AI agent into a social media analyst. Search posts, find experts
 
 ---
 
+## Setup
+
+Run `xpoz-setup` skill. Verify: `mcporter call xpoz.checkAccessKeyStatus`
+
 ## What You Can Do
 
 ### 🔍 Search & Monitor
@@ -53,7 +58,7 @@ mcporter call xpoz.getTwitterPostsByKeywords query="your brand" startDate=2026-0
 ### 🎯 Find Leads
 Discover people actively looking for solutions like yours — complaining about competitors, asking for recommendations, or describing pain points you solve.
 
-→ See **[social-lead-gen](https://clawhub.ai/skills/social-lead-gen)** skill
+→ See **[lead-generation](https://clawhub.ai/skills/lead-generation)** skill
 
 ### 🔬 Find Experts
 Identify domain authorities, thought leaders, and practitioners by analyzing who posts about technical topics with depth and consistency.
