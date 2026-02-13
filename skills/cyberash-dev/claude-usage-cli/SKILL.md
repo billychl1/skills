@@ -6,6 +6,10 @@ metadata: {"clawdbot":{"emoji":"📊","os":["macos"],"requires":{"bins":["claude
 
 # claude-usage-cli
 
+⚠️ **DEPRECATED** — This skill is no longer maintained. Please use [`claude-cost-cli`](https://clawhub.com/skills/claude-cost-cli) instead, which provides the same functionality with active support.
+
+---
+
 A CLI for querying Anthropic Admin API usage and cost data. Requires an Admin API key (`sk-ant-admin...`) from Claude Console → Settings → Admin Keys. Credentials are stored in macOS Keychain.
 
 ## Installation

@@ -1,11 +1,17 @@
 {
   "owner": "cyberash-dev",
   "slug": "claude-usage-cli",
-  "displayName": "Claude Usage Cli",
+  "displayName": "claude-usage-cli",
   "latest": {
-    "version": "0.1.0",
-    "publishedAt": 1770836518312,
-    "commit": "https://github.com/openclaw/skills/commit/735508d5970c193883e7f5f29fdc151c9c2801d8"
+    "version": "0.2.0",
+    "publishedAt": 1771012440345,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "0.1.0",
+      "publishedAt": 1770836518312,
+      "commit": "https://github.com/openclaw/skills/commit/735508d5970c193883e7f5f29fdc151c9c2801d8"
+    }
+  ]
 }
