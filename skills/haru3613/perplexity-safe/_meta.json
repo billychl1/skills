@@ -1,0 +1,11 @@
+{
+  "owner": "haru3613",
+  "slug": "perplexity-safe",
+  "displayName": "Perplexity AI Search - security-hardened version (bash-based)",
+  "latest": {
+    "version": "1.0.1",
+    "publishedAt": 1770955262479,
+    "commit": null
+  },
+  "history": []
+}
