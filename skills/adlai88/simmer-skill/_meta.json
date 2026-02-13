@@ -3,11 +3,16 @@
   "slug": "simmer-skill",
   "displayName": "Simmer Skill",
   "latest": {
-    "version": "1.14.0",
-    "publishedAt": 1770902553393,
-    "commit": "https://github.com/openclaw/skills/commit/7795614e115297dce53f94f22d119c6dbe5ba6bb"
+    "version": "1.15.0",
+    "publishedAt": 1770994503707,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.14.0",
+      "publishedAt": 1770902553393,
+      "commit": "https://github.com/openclaw/skills/commit/7795614e115297dce53f94f22d119c6dbe5ba6bb"
+    },
     {
       "version": "1.7.0",
       "publishedAt": 1770548708127,
