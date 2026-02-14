@@ -1,41 +1,81 @@
 #!/bin/bash
-# 远程发布文章到微信公众号
+# 远程发布文章到微信公众号 (Optimized for Compliance)
 # 基于 wenyan-mcp HTTP Stateless 模式
 
-# 读取文章路径
+set -e
+
+# Get script directory for relative path resolution
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Configuration
+CONFIG_FILE="${SKILL_ROOT}/wechat.env"
+MCP_CONFIG_FILE="${MCP_CONFIG_FILE:-$HOME/.openclaw/mcp.json}"
+
+# Load Configuration
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+# Dependencies Check
+check_deps() {
+    local missing=0
+    for cmd in jq mcporter curl; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "❌ Error: Required command '$cmd' not found."
+            missing=1
+        fi
+    done
+    
+    if [ $missing -eq 1 ]; then
+        echo "Please install missing dependencies."
+        exit 1
+    fi
+}
+
+check_deps
+
+# Check Config Files
+if [ ! -f "$MCP_CONFIG_FILE" ]; then
+    echo "❌ Error: MCP config file not found at: $MCP_CONFIG_FILE"
+    echo "Please create it or set MCP_CONFIG_FILE env var."
+    exit 1
+fi
+
+# Check Credentials
+if [ -z "$WECHAT_APP_ID" ] || [ -z "$WECHAT_APP_SECRET" ]; then
+    echo "❌ Error: WECHAT_APP_ID or WECHAT_APP_SECRET not set."
+    echo "Please configure '$CONFIG_FILE' based on 'wechat.env.example'."
+    exit 1
+fi
+
+# Usage
 FILE_PATH="$1"
 THEME_ID="${2:-default}"
 
 if [ -z "$FILE_PATH" ]; then
-  echo "Usage: ./publish-remote.sh <path/to/article.md> [theme_id]"
+  echo "Usage: $(basename "$0") <path/to/article.md> [theme_id]"
   echo "Example: ./publish-remote.sh ./my-post.md lapis"
   exit 1
 fi
 
 if [ ! -f "$FILE_PATH" ]; then
-  echo "Error: File '$FILE_PATH' not found."
+  echo "❌ Error: File '$FILE_PATH' not found."
   exit 1
 fi
 
-# 检查环境变量
-if [ -z "$WECHAT_APP_ID" ] || [ -z "$WECHAT_APP_SECRET" ]; then
-  echo "Error: WECHAT_APP_ID or WECHAT_APP_SECRET not set."
-  echo "Please set them in your environment or TOOLS.md."
-  exit 1
-fi
-
-# 上传文件
+# Upload File
 echo "🚀 Uploading file to wenyan-mcp..."
 FILENAME=$(basename "$FILE_PATH")
 CONTENT=$(cat "$FILE_PATH")
 
-# 构造 upload_file 的 args JSON (这里是关键：mcporter 必须正确构造 JSON 字符串)
-# 使用 jq 确保 JSON 转义正确
+# Safe JSON construction with jq
 UPLOAD_ARGS=$(jq -n --arg content "$CONTENT" --arg filename "$FILENAME" '{content: $content, filename: $filename}')
 
-UPLOAD_RES=$(mcporter call wenyan-mcp.upload_file --config /root/.openclaw/mcp.json --args "$UPLOAD_ARGS")
+# Call remote MCP
+UPLOAD_RES=$(mcporter call wenyan-mcp.upload_file --config "$MCP_CONFIG_FILE" --args "$UPLOAD_ARGS" 2>/dev/null)
 
-# 解析 upload 结果
+# Parse Upload Result
 FILE_ID=$(echo "$UPLOAD_RES" | jq -r '.file_id // empty')
 ERROR_MSG=$(echo "$UPLOAD_RES" | jq -r '.error // empty')
 
@@ -53,7 +93,7 @@ fi
 echo "✅ File uploaded! ID: $FILE_ID"
 echo "⏳ Publishing to WeChat draft box..."
 
-# 构造 publish_article 的 args JSON
+# Construct Publish Arguments
 PUBLISH_ARGS=$(jq -n \
   --arg file_id "$FILE_ID" \
   --arg theme_id "$THEME_ID" \
@@ -61,9 +101,10 @@ PUBLISH_ARGS=$(jq -n \
   --arg app_secret "$WECHAT_APP_SECRET" \
   '{file_id: $file_id, theme_id: $theme_id, wechat_app_id: $app_id, wechat_app_secret: $app_secret}')
 
-PUBLISH_RES=$(mcporter call wenyan-mcp.publish_article --config /root/.openclaw/mcp.json --args "$PUBLISH_ARGS")
+# Call remote MCP
+PUBLISH_RES=$(mcporter call wenyan-mcp.publish_article --config "$MCP_CONFIG_FILE" --args "$PUBLISH_ARGS" 2>/dev/null)
 
-# 解析 publish 结果
+# Parse Publish Result
 MEDIA_ID=$(echo "$PUBLISH_RES" | jq -r '.media_id // empty')
 PUBLISH_ERR=$(echo "$PUBLISH_RES" | jq -r '.error // empty')
 

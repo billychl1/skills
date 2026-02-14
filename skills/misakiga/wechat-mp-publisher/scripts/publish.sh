@@ -13,31 +13,33 @@ NC='\033[0m' # No Color
 # 默认配置
 DEFAULT_THEME="lapis"
 DEFAULT_HIGHLIGHT="solarized-light"
-TOOLS_MD="$HOME/.openclaw/workspace/TOOLS.md"
+
+# 获取脚本目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_ROOT="$(dirname "$SCRIPT_DIR")"
+CONFIG_FILE="${SKILL_ROOT}/wechat.env"
 
 # 检查 wenyan-cli 是否安装
 check_wenyan() {
-    if ! command -v wenyan &> /dev/null; then
-        echo -e "${RED}❌ wenyan-cli 未安装！${NC}"
-        echo -e "${YELLOW}正在安装 wenyan-cli...${NC}"
-        npm install -g @wenyan-md/cli
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✅ wenyan-cli 安装成功！${NC}"
-        else
-            echo -e "${RED}❌ 安装失败！请手动运行: npm install -g @wenyan-md/cli${NC}"
-            exit 1
-        fi
+    if command -v wenyan &> /dev/null; then
+        WENYAN_CMD="wenyan"
+    elif command -v npx &> /dev/null; then
+        echo -e "${YELLOW}wenyan-cli 未安装，使用 npx 运行...${NC}"
+        WENYAN_CMD="npx @wenyan-md/cli"
+    else
+        echo -e "${RED}❌ wenyan-cli 和 npx 均未安装！${NC}"
+        echo -e "${YELLOW}请安装 Node.js 或手动运行: npm install -g @wenyan-md/cli${NC}"
+        exit 1
     fi
 }
 
-# 从 TOOLS.md 读取环境变量
+# 从 wechat.env 读取环境变量
 load_credentials() {
-    if [ -z "$WECHAT_APP_ID" ] || [ -z "$WECHAT_APP_SECRET" ]; then
-        if [ -f "$TOOLS_MD" ]; then
-            echo -e "${YELLOW}📖 从 TOOLS.md 读取凭证...${NC}"
-            export WECHAT_APP_ID=$(grep "export WECHAT_APP_ID=" "$TOOLS_MD" | head -1 | sed 's/.*export WECHAT_APP_ID=//' | tr -d ' ')
-            export WECHAT_APP_SECRET=$(grep "export WECHAT_APP_SECRET=" "$TOOLS_MD" | head -1 | sed 's/.*export WECHAT_APP_SECRET=//' | tr -d ' ')
-        fi
+    if [ -f "$CONFIG_FILE" ]; then
+        echo -e "${YELLOW}📖 从 wechat.env 读取凭证...${NC}"
+        # Source only specific vars to avoid polluting env
+        export WECHAT_APP_ID=$(grep "^export WECHAT_APP_ID=" "$CONFIG_FILE" | cut -d'"' -f2)
+        export WECHAT_APP_SECRET=$(grep "^export WECHAT_APP_SECRET=" "$CONFIG_FILE" | cut -d'"' -f2)
     fi
 }
 
@@ -47,19 +49,11 @@ check_env() {
     
     if [ -z "$WECHAT_APP_ID" ] || [ -z "$WECHAT_APP_SECRET" ]; then
         echo -e "${RED}❌ 环境变量未设置！${NC}"
-        echo -e "${YELLOW}请在 TOOLS.md 中添加微信公众号凭证：${NC}"
+        echo -e "${YELLOW}请在 wechat.env 中配置微信公众号凭证：${NC}"
         echo ""
-        echo "  ## 🔐 WeChat Official Account (微信公众号)"
-        echo "  "
         echo "  export WECHAT_APP_ID=your_app_id"
         echo "  export WECHAT_APP_SECRET=your_app_secret"
         echo ""
-        echo -e "${YELLOW}或者手动设置环境变量：${NC}"
-        echo "  export WECHAT_APP_ID=your_app_id"
-        echo "  export WECHAT_APP_SECRET=your_app_secret"
-        echo ""
-        echo -e "${YELLOW}或者运行：${NC}"
-        echo "  source ./scripts/setup.sh"
         exit 1
     fi
 }
@@ -86,7 +80,7 @@ publish() {
     echo ""
     
     # 执行发布
-    wenyan publish -f "$file" -t "$theme" -h "$highlight"
+    $WENYAN_CMD publish -f "$file" -t "$theme" -h "$highlight"
     
     if [ $? -eq 0 ]; then
         echo ""
@@ -99,7 +93,7 @@ publish() {
         echo -e "${YELLOW}💡 常见问题：${NC}"
         echo "  1. IP 未在白名单 → 添加到公众号后台"
         echo "  2. Frontmatter 缺失 → 文件顶部添加 title + cover"
-        echo "  3. API 凭证错误 → 检查 TOOLS.md 中的凭证"
+        echo "  3. API 凭证错误 → 检查 wechat.env 中的凭证"
         echo "  4. 封面尺寸错误 → 需要 1080×864 像素"
         exit 1
     fi
