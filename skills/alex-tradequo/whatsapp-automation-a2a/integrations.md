@@ -10,29 +10,31 @@ and manage WhatsApp directly from conversation.
 
 ## Claude Desktop (MCP Server)
 
-Install the MCP server globally or run via npx:
+Install the MCP server globally or run via npx.
+**Verify the package** at [npmjs.com/package/@moltflow/mcp-server](https://www.npmjs.com/package/@moltflow/mcp-server) before running — npx downloads and executes remote code.
 
 ```bash
-npm install -g @moltflow/mcp-server@1.0.0
+npm install -g @moltflow/mcp-server@1.1.0
 ```
 
-Add to your `claude_desktop_config.json`:
+Add to your `claude_desktop_config.json`.
+**Use a scoped API key** — never paste a superadmin key here.
 
 ```json
 {
   "mcpServers": {
     "moltflow": {
       "command": "npx",
-      "args": ["-y", "@moltflow/mcp-server@1.0.0"],
+      "args": ["-y", "@moltflow/mcp-server@1.1.0"],
       "env": {
-        "MOLTFLOW_API_KEY": "your-api-key-here"
+        "MOLTFLOW_API_KEY": "your-scoped-api-key"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop. 22 MCP tools become available across
+Restart Claude Desktop. 25 MCP tools become available across
 sessions, messaging, groups, leads, outreach, and usage.
 
 **What you can do:**

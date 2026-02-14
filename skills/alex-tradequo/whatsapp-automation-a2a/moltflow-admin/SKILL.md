@@ -157,7 +157,7 @@ Admin user management (superadmin only — via `/admin` prefix):
 }
 ```
 
-- `scopes`: Array of permission scopes. Always specify the minimum scopes needed (e.g., `["sessions:read", "messages:send"]`). See main SKILL.md for the complete scope reference. Avoid `["*"]` — use only in development.
+- `scopes`: **Required** array of permission scopes. Specify only the scopes needed (e.g., `["sessions:read", "messages:send"]`). See main SKILL.md for the complete scope reference.
 - `expires_in_days`: Optional expiry in days (default: no expiry).
 
 **Important:** The `raw_key` is only returned at creation time. It is stored as a SHA-256 hash — it cannot be retrieved later.

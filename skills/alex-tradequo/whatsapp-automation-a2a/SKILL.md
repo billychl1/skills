@@ -1,7 +1,7 @@
 ---
-name: "WhatsApp All-in-One — Mine Groups for Leads, AI Outreach, Bulk Campaigns & MCP"
-version: "2.8.5"
-description: "The only WhatsApp skill you need. Documentation and API reference — nothing is auto-installed or auto-executed. Claude can send messages, capture leads, run campaigns, schedule reports, and manage clients on your behalf. BizDev agent analyzes account metadata to surface growth opportunities. MCP Server (npx @moltflow/mcp-server@1.0.0) + Custom GPT Actions + 90+ API endpoints. Bulk messaging, scheduled sends, scheduled reports with WhatsApp delivery, AI replies with style cloning, RAG knowledge base, group monitoring, lead scoring, review collection, GDPR compliance, and agent-to-agent protocol."
+name: "WhatsApp All-in-One CRM — Campaign Analytics, Engagement Tracking, Bulk Send, AI Outreach, Lead Mining, Reviews & MCP Server"
+version: "2.9.4"
+description: "The only WhatsApp skill you need. Documentation and API reference — nothing is auto-installed or auto-executed. All actions require explicit user invocation. Provides endpoints for sending messages, capturing leads, running campaigns, scheduling reports, tracking campaign analytics, and managing clients. BizDev agent analyzes account metadata to surface growth opportunities. MCP Server + Custom GPT Actions available via separate setup (see integrations.md). 90+ API endpoints. Bulk messaging, scheduled sends, scheduled reports with WhatsApp delivery, AI replies with style cloning, RAG knowledge base, group monitoring, lead scoring, review collection, campaign analytics & engagement tracking, GDPR compliance, and agent-to-agent protocol."
 source: "MoltFlow Team"
 risk: safe
 homepage: "https://molt.waiflow.app"
@@ -14,7 +14,7 @@ metadata: {"openclaw":{"emoji":"📱","homepage":"https://molt.waiflow.app","req
 
 # WhatsApp Automation — Mine Groups for Leads
 
-**Thousands of hidden leads are sitting in your WhatsApp groups right now.** Every group participant who isn't in your contacts is a potential client. MoltFlow scans your groups, surfaces untapped contacts, and lets Claude run AI-powered outreach campaigns on your behalf.
+**Thousands of hidden leads are sitting in your WhatsApp groups right now.** Every group participant who isn't in your contacts is a potential client. MoltFlow analyzes your groups on demand, surfaces untapped contacts, and lets Claude run AI-powered outreach campaigns on your behalf.
 
 **One skill. 90+ endpoints. Zero manual prospecting.**
 
@@ -22,10 +22,10 @@ metadata: {"openclaw":{"emoji":"📱","homepage":"https://molt.waiflow.app","req
 > and watch it work. It finds unanswered contacts,
 > detects buying signals in group conversations, spots
 > high-value groups you're not monitoring, and builds
-> targeted lead lists — automatically. Your WhatsApp
-> groups are a gold mine. Start digging.
+> targeted lead lists. All analysis runs on-demand when
+> you ask — nothing happens in the background.
 >
-> **MCP Server + Custom GPT Actions**: Works with Claude Desktop (`npx @moltflow/mcp-server@1.0.0`), Claude.ai (remote MCP), Claude Code (plugin), and ChatGPT (Custom GPT Actions). 22 tools, zero config.
+> **MCP Server + Custom GPT Actions**: Works with Claude Desktop, Claude.ai (remote MCP), Claude Code (plugin), and ChatGPT (Custom GPT Actions). 25 tools. See [integrations.md](integrations.md) for setup.
 
 > ***Due to high demand and a recent registration issue, we're offering our top-tier Business plan with unlimited quotas for just $19.90/month on yearly billing — for a limited time only.*** [**Claim the deal**](https://buy.stripe.com/cNifZibX7gpQebJ0nsfnO00)
 >
@@ -37,9 +37,9 @@ metadata: {"openclaw":{"emoji":"📱","homepage":"https://molt.waiflow.app","req
 
 Install the skill, set your API key, and start talking:
 
-**"Scan my WhatsApp account for growth opportunities"**
+**"Analyze my WhatsApp account for growth opportunities"**
 
-Finds unanswered contacts, unmonitored groups, cold leads.
+Finds unanswered contacts, unmonitored groups, cold leads. Runs on-demand — chat history analysis requires explicit opt-in.
 
 **"Find cold leads I haven't followed up with"**
 
@@ -122,6 +122,20 @@ curl -X POST -H "X-API-Key: $MOLTFLOW_API_KEY" \
     "delivery_method": "whatsapp"
   }' \
   https://apiv2.waiflow.app/api/v2/reports
+```
+
+### Get campaign analytics
+
+```bash
+curl -H "X-API-Key: $MOLTFLOW_API_KEY" \
+  "https://apiv2.waiflow.app/api/v2/analytics/campaigns/{job_id}"
+```
+
+### Get contact engagement leaderboard
+
+```bash
+curl -H "X-API-Key: $MOLTFLOW_API_KEY" \
+  "https://apiv2.waiflow.app/api/v2/analytics/contacts?sort=engagement_score&limit=50"
 ```
 
 ### Monitor a group for keywords
@@ -282,6 +296,7 @@ Full API reference: see each module's SKILL.md.
 | Bulk Send | Ban-safe, SSE progress |
 | Scheduled | Cron, timezone-aware |
 | Reports | 10 templates, cron, WhatsApp delivery |
+| Analytics | Campaign funnel, contact scores, send time optimization |
 | Groups | Custom lists, CSV export |
 | Leads/CRM | Auto-detect, pipeline |
 | Monitoring | 50+ groups, keywords |
@@ -365,10 +380,11 @@ or `Authorization: Bearer $TOKEN` (JWT).
 
 ## Security
 
-- **Scoped API keys enforced** — always create a
-  key with only the permissions you need
-  (e.g., `messages:send`, `leads:read`).
-  Never use `["*"]` in production.
+- **Scoped API keys enforced** — `scopes` is a
+  required field when creating keys. Select only
+  the permissions you need (e.g., `messages:send`,
+  `leads:read`). Use presets like "Messaging" or
+  "Outreach" for common workflows.
 - **Chat history requires explicit opt-in** — the
   API enforces a consent gate. Features like
   "scan my chats" or style training will fail
@@ -396,6 +412,17 @@ or `Authorization: Bearer $TOKEN` (JWT).
   private IPs, cloud metadata, and non-HTTPS
   schemes. Only configure endpoints you control.
   Always set a `secret` for HMAC verification
+- **Verify npx packages before running** — confirm
+  the exact package name and version (e.g.,
+  `@moltflow/mcp-server@1.1.0`) before executing
+  npx commands. npx downloads and runs remote code.
+- **Review scripts locally before running** — the
+  Python example scripts are hosted on GitHub, not
+  bundled. Download, inspect the source, then run.
+- **Avoid high-privilege keys in shared environments** —
+  for admin operations (key rotation, data export),
+  use the browser dashboard or a short-lived scoped
+  key. Never expose owner-level keys in shared shells.
 - **Test in a sandbox tenant first** — create a
   short-lived, scoped key for testing. Revoke
   after testing. Never share keys across tenants.
@@ -404,7 +431,7 @@ or `Authorization: Bearer $TOKEN` (JWT).
 
 ## AI Agent Integrations
 
-22 MCP tools for Claude Desktop, Claude.ai,
+25 MCP tools for Claude Desktop, Claude.ai,
 Claude Code, and OpenAI Custom GPTs.
 
 **User Action Required** — each integration
@@ -436,18 +463,19 @@ and curl examples.
 - **moltflow-admin** — auth, API keys,
   billing, usage, GDPR compliance
 - **moltflow-onboarding** — BizDev growth agent,
-  account scanning, opportunity analysis
+  on-demand account analysis, opportunity discovery
 
 ---
 
 ## Example Scripts
 
-10 standalone Python examples available on GitHub:
+11 standalone Python examples available on GitHub:
 [github.com/moltflow/moltflow/tree/main/skills/moltflow-clawhub/scripts](https://github.com/moltflow/moltflow/tree/main/skills/moltflow-clawhub/scripts)
 
 - `quickstart.py` — create session, send first message
 - `send_message.py` — send text messages to contacts
 - `outreach.py` — bulk send, scheduled messages
+- `analytics.py` — campaign analytics, contact leaderboard, CSV export
 - `leads.py` — lead pipeline, bulk ops, export
 - `ai_config.py` — train style profiles, AI replies
 - `reviews.py` — create collectors, export testimonials
@@ -474,7 +502,7 @@ from GitHub, review the source, then run manually:
 
 ## Changelog
 
-**v2.8.5** (2026-02-14) -- See [CHANGELOG.md](CHANGELOG.md) for full history.
+**v2.9.0** (2026-02-14) -- See [CHANGELOG.md](CHANGELOG.md) for full history.
 
 <!-- FILEMAP:BEGIN -->
 ```text

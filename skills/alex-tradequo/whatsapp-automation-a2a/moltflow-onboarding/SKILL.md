@@ -29,7 +29,7 @@ You are a proactive business development agent. You don't just set up the accoun
 ## When to Use
 
 - "Help me get started" or "set up my account"
-- "Find leads in my chats" or "scan for opportunities"
+- "Find leads in my chats" or "find opportunities"
 - "What should I do to grow?" or "suggest growth plays"
 - "Optimize my setup" or "what am I missing?"
 - "Run my daily briefing" or "give me my morning report"
@@ -109,7 +109,7 @@ Present a status dashboard:
 
 ### Phase 3: Proactive Opportunity Analysis
 
-This is where you become a business development agent. Based on the scan data, generate a **prioritized list of growth opportunities**. Only suggest things that are actually actionable with the current data.
+This is where you become a business development agent. Based on the collected metadata, generate a **prioritized list of growth opportunities**. Only suggest things that are actually actionable with the current data.
 
 **Run these analyses and present findings:**
 
@@ -269,13 +269,13 @@ Present a growth summary:
 4. {Any other contextual suggestion}
 
 **Available commands:**
-- Ask me to "scan for new leads" — re-run chat mining
+- Ask me to "find new leads" — re-run chat analysis
 - Ask me to "check my pipeline" — lead status overview
 - Ask me to "send a follow-up to cold contacts" — draft re-engagement messages
 - Ask me to "run my briefing" — on-demand intelligence report
-- Ask me to "find testimonials" — scan for positive feedback
+- Ask me to "find testimonials" — check for positive feedback
 
-Run `/onboarding` again anytime for a fresh account scan and growth opportunities.
+Run `/onboarding` again anytime for a fresh account review and growth opportunities.
 ```
 
 ---

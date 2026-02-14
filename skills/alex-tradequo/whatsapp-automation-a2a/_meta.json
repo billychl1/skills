@@ -3,11 +3,16 @@
   "slug": "whatsapp-automation-a2a",
   "displayName": "WhatsApp All-in-One — Mine Groups for Leads, AI Outreach, Bulk Campaigns & MCP",
   "latest": {
-    "version": "2.8.5",
-    "publishedAt": 1771054263558,
-    "commit": "https://github.com/openclaw/skills/commit/ee511659a3129014099a865d49f2f48dfbe8b03b"
+    "version": "2.9.4",
+    "publishedAt": 1771100427387,
+    "commit": null
   },
   "history": [
+    {
+      "version": "2.8.5",
+      "publishedAt": 1771054263558,
+      "commit": "https://github.com/openclaw/skills/commit/ee511659a3129014099a865d49f2f48dfbe8b03b"
+    },
     {
       "version": "2.3.2",
       "publishedAt": 1770987622562,

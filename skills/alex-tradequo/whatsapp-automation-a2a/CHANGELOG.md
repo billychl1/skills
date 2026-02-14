@@ -4,6 +4,71 @@ All notable changes to the **MoltFlow Skills** package are documented here.
 
 ---
 
+## v2.9.4 (2026-02-14)
+
+### Fixed
+- **Description wording aligned with `disable-model-invocation`** — "Claude can send messages" replaced with "Provides endpoints for sending messages" to match the skill's non-autonomous design
+- **Removed npx command from description and hero block** — npx setup now referenced only in integrations.md where verification guidance exists
+- Closes instruction scope inconsistency flagged by security scanner
+
+---
+
+## v2.9.3 (2026-02-14)
+
+### Fixed
+- **Removed `scripts/analytics.py` from package** — scan flagged Python script in documentation-only package; script available on GitHub only
+- **Removed empty `scripts/` directory** — package now contains exclusively `.md` and `.json` files (zero executables)
+- **MCP server version pinned to 1.1.0** throughout integrations.md (was 1.0.0 in some places)
+- **Config examples use scoped key placeholder** — `your-scoped-api-key` replaces `your-api-key-here` to reinforce least-privilege
+
+---
+
+## v2.9.2 (2026-02-14)
+
+### Changed
+- Replaced "scan" marketing language with "analyze/review" across root SKILL.md and onboarding — closes perception gap between marketing phrasing and actual on-demand, consent-gated behavior
+- BizDev block: "automatically" removed, replaced with explicit "All analysis runs on-demand" clarification
+- Added 3 security bullets: npx package verification, script review before running, avoid high-privilege keys in shared environments
+- Integrations.md: added npmjs.com verification link for MCP server package
+
+---
+
+## v2.9.1 (2026-02-14)
+
+### Changed
+- Display name updated for better search discoverability (added CRM, Campaign Analytics, Engagement Tracking keywords)
+- Contact leaderboard endpoint now returns real data (was stubbed)
+- Contact history decrypts sender names before returning
+- Engagement score denominator (messages_sent) now correctly incremented
+
+---
+
+## v2.9.0 (2026-02-14)
+
+### Added
+- Campaign analytics endpoints documentation (Pro+ plans)
+- Contact engagement scoring and leaderboard
+- Send time optimization heatmap
+- Analytics Python script (`analytics.py`)
+- MCP tools: `get_campaign_analytics`, `get_contact_engagement`, `get_contact_history`
+
+### Changed
+- Updated platform features table to include analytics
+- Added analytics code samples to main SKILL.md
+- MCP server version bumped to 1.1.0 (25 tools, up from 22)
+- Updated tool count references across SKILL.md
+
+---
+
+## v2.8.6 (2026-02-14)
+
+### Security
+- **Least-privilege API keys enforced** — `scopes` is now a required field when creating API keys (no more wildcard default). Users must explicitly select permissions via presets (Messaging, Outreach, Read Only) or individual scopes
+- **403 errors now include required scopes** — `X-Required-Scopes` header + detail message tells callers exactly which scopes they need
+- **Updated all docs** — guides, blog posts, MCP README, and landing page updated to reflect required scopes
+
+---
+
 ## v2.8.5 (2026-02-14)
 
 ### Security
