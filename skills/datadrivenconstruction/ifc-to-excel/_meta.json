@@ -3,9 +3,15 @@
   "slug": "ifc-to-excel",
   "displayName": "Ifc To Excel",
   "latest": {
-    "version": "1.0.0",
-    "publishedAt": 1770474853578,
-    "commit": "https://github.com/openclaw/skills/commit/53914950e2087387dec5ffb7d7efbe5e3073d487"
+    "version": "2.0.0",
+    "publishedAt": 1771000160772,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.0.0",
+      "publishedAt": 1770474853578,
+      "commit": "https://github.com/openclaw/skills/commit/53914950e2087387dec5ffb7d7efbe5e3073d487"
+    }
+  ]
 }
