@@ -3,7 +3,7 @@ name: browserbase-sessions
 description: Create and manage persistent Browserbase cloud browser sessions with authentication persistence. Use when you need to automate browsers, maintain logged-in sessions across interactions, scrape authenticated pages, or manage cloud browser instances.
 license: MIT
 homepage: https://docs.browserbase.com
-metadata: {"author":"custom","version":"2.4.0","openclaw":{"emoji":"🌐","requires":{"bins":["python3"]},"primaryEnv":"BROWSERBASE_API_KEY"}}
+metadata: {"author":"custom","version":"2.5.0","openclaw":{"emoji":"🌐","requires":{"bins":["python3"]},"primaryEnv":"BROWSERBASE_API_KEY"}}
 ---
 
 # Browserbase Sessions Skill
@@ -24,11 +24,17 @@ Manage persistent cloud browser sessions via Browserbase. This skill creates bro
   - Open tabs (URL + title snapshot) so you can restore where you left off
 - Prefer workspace commands (`create-workspace`, `start-workspace`, `resume-workspace`, `stop-workspace`) over raw session commands when the user wants the browser to stay open across chat turns.
 - Prefer direct interaction commands (`list-tabs`, `new-tab`, `switch-tab`, `close-tab`, `click`, `type`, `press`, `wait-for`, `go-back`, `go-forward`, `reload`, `read-page`) before falling back to `execute-js`.
+- If a workspace/session has a `pending_handoff`, **check it first** before doing anything else:
+  - `python3 {baseDir}/scripts/browserbase_manager.py handoff --action check --workspace <ws>`
+  - If not done, resend `suggested_user_message` and stop.
 - Whenever a browser is opened (`start-workspace`, `resume-workspace`, or `create-session`), immediately share the human remote-control link:
   - Prefer `human_handoff.share_url` from command output.
   - Prefer `human_handoff.share_text` / `human_handoff.share_markdown` when replying to the user.
   - Fallback to `human_control_url`.
   - If missing, run `live-url` and share its `human_handoff.share_url`.
+- When you need the user to perform a manual step (SSO/MFA/captcha/consent screens), use a **handoff with a completion check**:
+  - Set: `python3 {baseDir}/scripts/browserbase_manager.py handoff --action set --workspace <ws> --instructions "<what to do>" --url-contains "<post-step url fragment>"` (or `--selector/--text/--cookie-name/...`)
+  - Verify later: `python3 {baseDir}/scripts/browserbase_manager.py handoff --action check --workspace <ws>` (or `--action wait`)
 - When closing, use `stop-workspace` (not `terminate-session`) so tabs are snapshotted and auth state is persisted.
 
 ## Prompt-Optimized Response Patterns
@@ -54,6 +60,16 @@ When resuming an existing workspace:
 ```text
 Reconnected to your existing workspace.
 <human_handoff.share_text>
+```
+
+When a human step is required (SSO/MFA/consent screens):
+```text
+I need you to do one step in the live browser:
+1) <exact steps>
+
+Open: <human_handoff.share_url>
+Stop when you reach: <a specific completion state (URL contains / selector visible)>.
+I’ll detect it and continue automatically. If I don’t, reply “done” and I’ll re-check.
 ```
 
 When live URL is temporarily unavailable:
@@ -132,6 +148,7 @@ Every session is created with these defaults to support research workflows:
 
 - **Captcha solving: ON** — Browserbase automatically solves CAPTCHAs so login flows and protected pages work without manual intervention. Disable with `--no-solve-captchas`.
 - **Session recording: ON** — Browserbase records sessions (video in the Dashboard; rrweb events retrievable via API). Disable with `--no-record`.
+- **Session logging: ON** — Browserbase captures session logs retrievable via API. Disable with `--no-logs`.
 - **Auth persistence** — If you use a Context (or Workspace), auth state is persisted by default. Disable persistence with `--no-persist`.
 
 ## Capabilities & Limitations (Be Explicit)
@@ -148,7 +165,7 @@ The agent can:
 The agent cannot:
 - Keep sessions running indefinitely (Browserbase enforces timeouts; max is 6 hours).
 - Restore full back/forward browser history (only open URLs are restored).
-- Reliably “see” manual actions the user takes in the live debugger unless the agent reconnects/snapshots.
+- Passively “watch” what the user is doing in the live debugger. To detect human actions, the agent must reconnect and **check for specific completion conditions** (selector/text/url/cookie/storage) using `handoff` or `wait-for`.
 - Bypass MFA/SSO without user participation.
 - Download the Dashboard video via API (the API returns rrweb events, not a video file).
 
@@ -248,7 +265,7 @@ python3 {baseDir}/scripts/browserbase_manager.py delete-context --context-id git
 
 ### Session Lifecycle
 
-Create a new session (captcha solving and recording enabled by default):
+Create a new session (captcha solving, recording, and logging enabled by default):
 ```bash
 # Basic session
 python3 {baseDir}/scripts/browserbase_manager.py create-session
@@ -359,6 +376,11 @@ Fetch rrweb recording events (session must be terminated first):
 python3 {baseDir}/scripts/browserbase_manager.py get-recording --session-id <id> --output /tmp/session.rrweb.json
 ```
 
+Download files saved during the session (archive):
+```bash
+python3 {baseDir}/scripts/browserbase_manager.py get-downloads --session-id <id> --output /tmp/downloads.zip
+```
+
 Get session logs:
 ```bash
 python3 {baseDir}/scripts/browserbase_manager.py get-logs --session-id <id>
@@ -368,6 +390,51 @@ Get the live debug URL (for visual inspection of a running session):
 ```bash
 python3 {baseDir}/scripts/browserbase_manager.py live-url --session-id <id>
 # Share: human_handoff.share_url
+```
+
+### Human Handoff (Manual Steps)
+
+Use `handoff` when the user must do something manually (SSO/MFA/consent screens) and you want to **detect completion** and resume automatically.
+
+Completion checks (pick the most reliable signal you can):
+- Prefer `--url-contains` for post-login destinations (e.g. `/dashboard`, `/app`, `/settings`).
+- Use `--selector` when the URL doesn’t change (SPAs).
+- Use `--cookie-name`, `--local-storage-key`, `--session-storage-key` only when you know a stable auth indicator.
+
+Combining checks:
+- Default is `--match all` (AND): all provided checks must be true.
+- Use `--match any` (OR) when you want multiple fallback signals (e.g., URL contains `/dashboard` OR selector `.dashboard-ready`).
+
+Set a handoff (store the instructions + completion check):
+```bash
+python3 {baseDir}/scripts/browserbase_manager.py handoff \
+  --action set \
+  --workspace myapp \
+  --instructions "Log in and stop on the dashboard." \
+  --url-contains "/dashboard"
+```
+
+Fallback example (any-of):
+```bash
+python3 {baseDir}/scripts/browserbase_manager.py handoff \
+  --action set \
+  --workspace myapp \
+  --instructions "Complete login and stop on the dashboard." \
+  --url-contains "/dashboard" \
+  --selector ".dashboard-ready" \
+  --match any
+```
+
+Tip: `handoff --action set` returns `suggested_user_message.text` / `suggested_user_message.markdown` so you can paste a consistent “hey human do this” message (with the live debugger URL) to the user.
+
+Later, verify once:
+```bash
+python3 {baseDir}/scripts/browserbase_manager.py handoff --action check --workspace myapp
+```
+
+Or wait up to 5 minutes (default) for completion:
+```bash
+python3 {baseDir}/scripts/browserbase_manager.py handoff --action wait --workspace myapp
 ```
 
 ## Common Workflows
@@ -441,6 +508,7 @@ python3 {baseDir}/scripts/browserbase_manager.py get-recording --session-id <id>
 
 - **Captcha solving is ON by default.** Browserbase handles CAPTCHAs automatically during login flows and page loads. Use `--no-solve-captchas` to disable.
 - **Recording is ON by default.** Video is available in the Browserbase Dashboard; `get-recording` fetches rrweb events (primary tab) for programmatic replay. Use `--no-record` to disable.
+- **Logging is ON by default.** Use `get-logs` to retrieve logs; disable with `--no-logs`.
 - **Connection timeout**: 5 minutes to connect after creation before auto-termination.
 - **Keep-alive sessions** survive disconnections and must be explicitly terminated.
 - **Context persistence**: When a session was created with a context using `persist=true` (default), wait a few seconds after termination before creating a new session with the same context.

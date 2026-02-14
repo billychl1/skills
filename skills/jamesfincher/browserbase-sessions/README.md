@@ -19,9 +19,11 @@ This skill gives the OpenClaw agent the ability to:
   manual intervention (enabled by default)
 - **Record sessions** — Browserbase records sessions (video replay in the Dashboard;
   rrweb events retrievable via API) (enabled by default)
+- **Download session files** — fetch an archive of any files downloaded during the session
 - **Take screenshots** — viewport or full-page, during navigation or on demand
 - **Reconnect to keep-alive sessions** that survive disconnections
 - **Share human remote-control links** so users can take over in Browserbase Live Debugger
+- **Run human-in-the-loop handoffs** — tell the user what to do and detect completion via checks (selector/text/url/cookie/storage)
 - **Automate browsing** — navigate, manage tabs, click/type/press, wait for UI state, read page content, execute JavaScript, and read cookies
 - **Manage session lifecycle** — list, inspect, and terminate sessions
 
@@ -89,7 +91,7 @@ This validates everything end-to-end: credentials, SDK, Playwright, API connecti
 | `resume-workspace` | Reconnect to an existing workspace session or start a new one |
 | `snapshot-workspace` | Save current open tabs to the workspace |
 | `stop-workspace` | Snapshot tabs and terminate the active workspace session |
-| `create-session` | Create a browser session (captchas + recording ON by default) |
+| `create-session` | Create a browser session (captchas + recording + logs ON by default) |
 | `list-sessions` | List all sessions |
 | `get-session` | Get session details |
 | `terminate-session` | Terminate a running session |
@@ -110,7 +112,9 @@ This validates everything end-to-end: credentials, SDK, Playwright, API connecti
 | `execute-js` | Execute JavaScript in a session |
 | `get-cookies` | Get cookies from a session |
 | `get-recording` | Fetch session rrweb recording events |
+| `get-downloads` | Download files saved during the session (archive) |
 | `get-logs` | Get session logs |
+| `handoff` | Create/check/clear a human handoff request (manual steps with completion checks) |
 | `live-url` | Get live debug URL for a running session |
 
 ## Key Design Decisions
@@ -122,6 +126,9 @@ pages work without manual intervention. Disable with `--no-solve-captchas`.
 **Recording ON by default.** Video replay is available in the Browserbase Dashboard.
 Use `get-recording` to fetch rrweb events (primary tab) for programmatic replay.
 Disable with `--no-record`.
+
+**Logging ON by default.** Use `get-logs` for programmatic debugging/traceability.
+Disable with `--no-logs`.
 
 **Named contexts.** Instead of remembering UUIDs, name your contexts (`--name github`,
 `--name slack`) and reference them by name anywhere a context ID is expected.
@@ -137,6 +144,20 @@ tab commands, history commands, `read-page`) for reliability and consistent outp
 **Human handoff links.** Session-opening commands return `human_control_url` (plus fullscreen variant)
 plus a `human_handoff` object (`share_url`, `share_text`) so the agent can immediately send
 a polished remote-control message to the user.
+
+**Human handoff completion checks.** Use the `handoff` command to store “hey human do this” instructions
+plus a completion signal (selector/text/url/cookie/storage). Then the agent can check/wait and automatically
+resume once the condition is satisfied.
+
+Example:
+```bash
+python3 scripts/browserbase_manager.py handoff \
+  --action set \
+  --workspace myapp \
+  --instructions "Log in and stop on the dashboard." \
+  --url-contains "/dashboard"
+python3 scripts/browserbase_manager.py handoff --action check --workspace myapp
+```
 
 **Prompt polish.** Prefer `human_handoff.share_text` (or `share_markdown`) directly in user replies
 to keep handoff responses short, clear, and consistent.

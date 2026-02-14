@@ -15,6 +15,7 @@ Base URL: `https://api.browserbase.com/v1`
     "context": { "id": "<context-id>", "persist": true },
     "blockAds": true,
     "recordSession": true,
+    "logSession": true,
     "solveCaptchas": true,
     "viewport": { "width": 1280, "height": 720 }
   },

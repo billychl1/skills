@@ -44,7 +44,9 @@ Commands:
     screenshot          Take a screenshot of the current page
     get-cookies         Get cookies from a session
     get-recording       Fetch session rrweb recording events (JSON)
+    get-downloads       Download files saved during the session (archive)
     get-logs            Get session logs
+    handoff             Create/check/clear a human handoff request for a session/workspace
     live-url            Get live debug URL for a session
 
 Environment Variables:
@@ -59,6 +61,9 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -68,6 +73,7 @@ from typing import Any, Optional
 # ---------------------------------------------------------------------------
 
 _WORKSPACE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+_BROWSERBASE_API_BASE = "https://api.browserbase.com/v1"
 
 
 def _utc_now_iso() -> str:
@@ -112,6 +118,39 @@ def _workspaces_dir() -> str:
     path = os.path.join(_state_dir(), "workspaces")
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def _handoffs_dir() -> str:
+    path = os.path.join(_state_dir(), "handoffs")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _handoff_path(session_id: str) -> str:
+    # Session ids are typically UUIDs; sanitize just in case.
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", session_id)
+    return os.path.join(_handoffs_dir(), f"{safe}.json")
+
+
+def _load_handoff_file(session_id: str) -> Optional[dict[str, Any]]:
+    path = _handoff_path(session_id)
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_handoff_file(session_id: str, data: Optional[dict[str, Any]]) -> None:
+    path = _handoff_path(session_id)
+    if data is None:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        return
+    data["updated_at"] = _utc_now_iso()
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
 
 def _validate_workspace_name(name: str) -> None:
@@ -187,7 +226,7 @@ def output_json(data: dict[str, Any]) -> None:
 
 def output_error(message: str) -> None:
     """Print an error as JSON to stdout."""
-    output_json({"error": message})
+    output_json({"status": "error", "error": message})
 
 
 def get_client():
@@ -207,6 +246,36 @@ def get_client():
 def get_project_id() -> str:
     """Get the Browserbase project ID."""
     return get_env("BROWSERBASE_PROJECT_ID")
+
+
+def _download_api_to_file(*, url: str, output_path: str, headers: dict[str, str]) -> dict[str, Any]:
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)) or ".", exist_ok=True)
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req) as resp, open(output_path, "wb") as f:
+            n = 0
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+                n += len(chunk)
+            return {
+                "ok": True,
+                "status_code": getattr(resp, "status", None),
+                "content_type": resp.headers.get("Content-Type"),
+                "bytes_written": n,
+            }
+    except urllib.error.HTTPError as e:
+        return {
+            "ok": False,
+            "status_code": getattr(e, "code", None),
+            "error": f"HTTP {getattr(e, 'code', '')}: {getattr(e, 'reason', '')}".strip(),
+        }
+    except urllib.error.URLError as e:
+        return {"ok": False, "error": f"Network error: {e}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -599,7 +668,7 @@ def cmd_create_session(args: argparse.Namespace) -> None:
     browser_settings: dict[str, Any] = {
         "solve_captchas": not args.no_solve_captchas,
         "record_session": not args.no_record,
-        "log_session": not args.no_record,
+        "log_session": not getattr(args, "no_logs", False),
     }
 
     if context_id:
@@ -651,6 +720,7 @@ def cmd_create_session(args: argparse.Namespace) -> None:
             "region": getattr(session, "region", args.region or "us-west-2"),
             "captcha_solving": not args.no_solve_captchas,
             "recording": not args.no_record,
+            "logging": not getattr(args, "no_logs", False),
         }
         _attach_human_handoff(result, live_urls, session_id=session.id)
 
@@ -665,6 +735,7 @@ def cmd_create_session(args: argparse.Namespace) -> None:
         result["message"] = (
             "Session created with captcha solving"
             + (" and recording" if not args.no_record else "")
+            + (" and logging" if not getattr(args, "no_logs", False) else "")
             + " enabled. Use connect_url with Playwright's "
             "connect_over_cdp() or the navigate/execute-js commands. "
             "Share human_handoff.share_url (or human_control_url) with the user for remote control. "
@@ -718,7 +789,7 @@ def cmd_get_session(args: argparse.Namespace) -> None:
     try:
         session_id, _ws = _resolve_session_id(getattr(args, "session_id", None), getattr(args, "workspace", None))
         s = client.sessions.retrieve(session_id)
-        output_json({
+        result = {
             "status": "success",
             "command": "get-session",
             "session_id": s.id,
@@ -733,7 +804,13 @@ def cmd_get_session(args: argparse.Namespace) -> None:
             "avg_cpu_usage": getattr(s, "avg_cpu_usage", None),
             "memory_usage": getattr(s, "memory_usage", None),
             "proxy_bytes": getattr(s, "proxy_bytes", None),
-        })
+        }
+        if getattr(args, "workspace", None) and _ws is not None:
+            result["workspace"] = str(args.workspace)
+            result["pending_handoff"] = _ws.get("pending_handoff")
+        else:
+            result["pending_handoff"] = _load_handoff_file(str(s.id))
+        output_json(result)
     except Exception as e:
         output_error(f"Failed to get session: {e}")
         sys.exit(1)
@@ -945,6 +1022,7 @@ def _create_session_internal(
     proxy: bool = False,
     block_ads: bool = False,
     record: bool = True,
+    log: bool = True,
     solve_captchas: bool = True,
     viewport_width: Optional[int] = None,
     viewport_height: Optional[int] = None,
@@ -952,7 +1030,7 @@ def _create_session_internal(
     browser_settings: dict[str, Any] = {
         "solve_captchas": solve_captchas,
         "record_session": record,
-        "log_session": record,
+        "log_session": log,
     }
 
     if context_id:
@@ -1041,6 +1119,16 @@ def _attach_human_handoff(
             if debugger_url
             else None
         ),
+        "share_text_fullscreen": (
+            f"I opened {context_label}. Take remote control (fullscreen) here: {fullscreen_url}"
+            if fullscreen_url
+            else None
+        ),
+        "share_markdown_fullscreen": (
+            f"I opened {context_label}. Take remote control (fullscreen) here: [Open Browser (Fullscreen)]({fullscreen_url})"
+            if fullscreen_url
+            else None
+        ),
         "note": (
             "Send share_url to the user so they can take control in Browserbase Live Debugger."
             if debugger_url
@@ -1109,6 +1197,40 @@ def _append_ws_history(ws: dict[str, Any], entry: dict[str, Any], cap: int = 200
     ws["history"] = history
 
 
+def _get_pending_handoff(
+    *,
+    session_id: Optional[str],
+    ws: Optional[dict[str, Any]],
+    workspace_name: Optional[str],
+) -> Optional[dict[str, Any]]:
+    if workspace_name and ws is not None:
+        return ws.get("pending_handoff")
+    if session_id:
+        return _load_handoff_file(session_id)
+    return None
+
+
+def _set_pending_handoff(
+    *,
+    session_id: Optional[str],
+    ws: Optional[dict[str, Any]],
+    workspace_name: Optional[str],
+    handoff: Optional[dict[str, Any]],
+    history_type: Optional[str] = None,
+) -> None:
+    if workspace_name and ws is not None:
+        if handoff is None:
+            ws.pop("pending_handoff", None)
+        else:
+            ws["pending_handoff"] = handoff
+        if history_type:
+            _append_ws_history(ws, {"ts": _utc_now_iso(), "type": history_type, "session_id": session_id})
+        _save_workspace(workspace_name, ws)
+        return
+    if session_id:
+        _save_handoff_file(session_id, handoff)
+
+
 def cmd_start_workspace(args: argparse.Namespace) -> None:
     """Start a workspace session (keep-alive by default) and optionally restore tabs."""
     client = get_client()
@@ -1143,14 +1265,22 @@ def cmd_start_workspace(args: argparse.Namespace) -> None:
                 s = client.sessions.retrieve(str(active))
                 status = str(getattr(s, "status", "")).upper()
                 if status == "RUNNING":
-                    output_json({
+                    live_urls = _get_live_urls_safe(client, str(active))
+                    result: dict[str, Any] = {
                         "status": "success",
                         "command": "start-workspace",
                         "workspace": args.name,
                         "session_id": str(active),
                         "session_status": status,
-                        "message": "Workspace already has a running session. Use resume-workspace to reconnect or stop-workspace to close it.",
-                    })
+                        "connect_url": getattr(s, "connect_url", None),
+                        "pending_handoff": ws.get("pending_handoff"),
+                        "message": (
+                            "Workspace already has a running session. Reconnected. "
+                            "Share human_handoff.share_url with the user for remote control."
+                        ),
+                    }
+                    _attach_human_handoff(result, live_urls, workspace=args.name, session_id=str(active))
+                    output_json(result)
                     return
             except Exception:
                 pass
@@ -1170,6 +1300,7 @@ def cmd_start_workspace(args: argparse.Namespace) -> None:
             proxy=args.proxy,
             block_ads=args.block_ads,
             record=not args.no_record,
+            log=not getattr(args, "no_logs", False),
             solve_captchas=not args.no_solve_captchas,
             viewport_width=args.viewport_width,
             viewport_height=args.viewport_height,
@@ -1228,6 +1359,10 @@ def cmd_start_workspace(args: argparse.Namespace) -> None:
         "session_status": getattr(session, "status", "RUNNING"),
         "keep_alive": not args.no_keep_alive,
         "timeout": args.timeout,
+        "captcha_solving": not args.no_solve_captchas,
+        "recording": not args.no_record,
+        "logging": not getattr(args, "no_logs", False),
+        "pending_handoff": ws.get("pending_handoff"),
         "restored_tabs": restored_tabs,
         "tabs_snapshot_count": len(tabs_snapshot) if tabs_snapshot is not None else None,
         "playwright_error": playwright_error,
@@ -1272,6 +1407,7 @@ def cmd_resume_workspace(args: argparse.Namespace) -> None:
                     "session_id": str(active),
                     "session_status": status,
                     "connect_url": getattr(s, "connect_url", None),
+                    "pending_handoff": ws.get("pending_handoff"),
                     "message": "Workspace session is still running. Reconnected. Share human_handoff.share_url with the user for remote control.",
                 }
                 _attach_human_handoff(result, live_urls, workspace=args.name, session_id=str(active))
@@ -2639,6 +2775,46 @@ def cmd_get_recording(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_get_downloads(args: argparse.Namespace) -> None:
+    """Download the session downloads archive to a file."""
+    try:
+        session_id, ws = _resolve_session_id(getattr(args, "session_id", None), getattr(args, "workspace", None))
+    except Exception as e:
+        output_error(str(e))
+        sys.exit(1)
+
+    api_key = get_env("BROWSERBASE_API_KEY")
+    url = f"{_BROWSERBASE_API_BASE}/sessions/{session_id}/downloads"
+    info = _download_api_to_file(
+        url=url,
+        output_path=args.output,
+        headers={"X-BB-API-Key": api_key},
+    )
+    if not info.get("ok"):
+        output_error(f"Failed to download session downloads: {info.get('error') or 'unknown error'}")
+        sys.exit(1)
+
+    file_size = os.path.getsize(args.output) if os.path.exists(args.output) else 0
+    result: dict[str, Any] = {
+        "status": "success",
+        "command": "get-downloads",
+        "session_id": session_id,
+        "output_path": args.output,
+        "file_size_bytes": file_size,
+        "content_type": info.get("content_type"),
+        "message": f"Downloads archive saved to {args.output} ({file_size:,} bytes).",
+    }
+    if getattr(args, "workspace", None):
+        result["workspace"] = str(args.workspace)
+    if ws is not None and getattr(args, "workspace", None):
+        try:
+            _append_ws_history(ws, {"ts": _utc_now_iso(), "type": "get-downloads", "session_id": session_id})
+            _save_workspace(str(args.workspace), ws)
+        except Exception:
+            pass
+    output_json(result)
+
+
 def cmd_get_logs(args: argparse.Namespace) -> None:
     """Get logs from a session."""
     client = get_client()
@@ -2705,6 +2881,10 @@ def cmd_live_url(args: argparse.Namespace) -> None:
         )
         if getattr(args, "workspace", None):
             result["workspace"] = str(args.workspace)
+            if ws is not None:
+                result["pending_handoff"] = ws.get("pending_handoff")
+        else:
+            result["pending_handoff"] = _load_handoff_file(str(session_id))
         if ws is not None and getattr(args, "workspace", None):
             try:
                 _append_ws_history(ws, {"ts": _utc_now_iso(), "type": "live-url", "session_id": session_id})
@@ -2715,6 +2895,608 @@ def cmd_live_url(args: argparse.Namespace) -> None:
     except Exception as e:
         output_error(f"Failed to get live URL: {e}")
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Human Handoff (Human-in-the-loop)
+# ---------------------------------------------------------------------------
+
+def _handoff_conditions_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    conditions: dict[str, Any] = {}
+    for key in [
+        "selector",
+        "selector_state",
+        "text",
+        "url_contains",
+        "title_contains",
+        "load_state",
+        "cookie_name",
+        "cookie_domain_contains",
+        "local_storage_key",
+        "session_storage_key",
+    ]:
+        value = getattr(args, key, None)
+        if value is not None:
+            conditions[key] = value
+    return conditions
+
+
+def _handoff_has_any_check(conditions: dict[str, Any]) -> bool:
+    return any(
+        conditions.get(k)
+        for k in [
+            "selector",
+            "text",
+            "url_contains",
+            "title_contains",
+            "load_state",
+            "cookie_name",
+            "local_storage_key",
+            "session_storage_key",
+        ]
+    )
+
+
+def _handoff_completion_hint(conditions: dict[str, Any]) -> Optional[str]:
+    parts: list[str] = []
+    if conditions.get("url_contains"):
+        parts.append(f"URL contains '{conditions['url_contains']}'")
+    if conditions.get("title_contains"):
+        parts.append(f"title contains '{conditions['title_contains']}'")
+    if conditions.get("text"):
+        parts.append(f"page text contains '{conditions['text']}'")
+    if conditions.get("selector"):
+        state = conditions.get("selector_state") or "visible"
+        parts.append(f"selector is {state}: {conditions['selector']}")
+    if conditions.get("cookie_name"):
+        dom = conditions.get("cookie_domain_contains")
+        if dom:
+            parts.append(f"cookie '{conditions['cookie_name']}' exists (domain contains '{dom}')")
+        else:
+            parts.append(f"cookie '{conditions['cookie_name']}' exists")
+    if conditions.get("local_storage_key"):
+        parts.append(f"localStorage['{conditions['local_storage_key']}'] exists")
+    if conditions.get("session_storage_key"):
+        parts.append(f"sessionStorage['{conditions['session_storage_key']}'] exists")
+    if conditions.get("load_state"):
+        parts.append(f"load state is '{conditions['load_state']}'")
+    if not parts:
+        return None
+    return "; ".join(parts)
+
+
+def _check_selector_condition(page: Any, selector: str, selector_state: str) -> bool:
+    # Avoid Playwright auto-waits; do an immediate DOM check.
+    js = """
+        (selector) => {
+          const el = document.querySelector(selector);
+          if (!el) return { attached: false, visible: false };
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          const visible = (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style &&
+            style.visibility !== 'hidden' &&
+            style.display !== 'none' &&
+            style.opacity !== '0'
+          );
+          return { attached: true, visible };
+        }
+    """
+    try:
+        info = page.evaluate(js, selector)
+        attached = bool((info or {}).get("attached"))
+        visible = bool((info or {}).get("visible"))
+        if selector_state == "attached":
+            return attached
+        if selector_state == "detached":
+            return not attached
+        if selector_state == "visible":
+            return visible
+        if selector_state == "hidden":
+            return not visible
+        return False
+    except Exception:
+        return False
+
+
+def _check_text_condition(page: Any, text: str) -> bool:
+    try:
+        return bool(page.evaluate("(needle) => !!document.body && document.body.innerText.includes(needle)", text))
+    except Exception:
+        return False
+
+
+def _check_storage_condition(page: Any, *, kind: str, key: str) -> bool:
+    if kind not in ("local", "session"):
+        return False
+    try:
+        if kind == "local":
+            return bool(page.evaluate("(k) => localStorage.getItem(k) !== null", key))
+        return bool(page.evaluate("(k) => sessionStorage.getItem(k) !== null", key))
+    except Exception:
+        return False
+
+
+def _check_load_state_condition(page: Any, load_state: str) -> bool:
+    # For check flows, do a cheap readyState check when possible.
+    try:
+        if load_state == "load":
+            return bool(page.evaluate("() => document.readyState === 'complete'"))
+        if load_state == "domcontentloaded":
+            return bool(page.evaluate("() => ['interactive','complete'].includes(document.readyState)"))
+        if load_state == "networkidle":
+            try:
+                page.wait_for_load_state("networkidle", timeout=250)
+                return True
+            except Exception:
+                return False
+    except Exception:
+        return False
+    return False
+
+
+def _cookie_match(c: dict[str, Any], *, name: str, domain_contains: Optional[str]) -> bool:
+    if c.get("name") != name:
+        return False
+    if domain_contains:
+        return domain_contains.lower() in str(c.get("domain", "")).lower()
+    return True
+
+
+def _check_handoff_conditions_on_page(
+    page: Any,
+    *,
+    conditions: dict[str, Any],
+    match: str = "all",
+) -> tuple[bool, dict[str, Any]]:
+    results: dict[str, Any] = {}
+    checks: list[bool] = []
+
+    selector = conditions.get("selector")
+    if selector:
+        selector_state = conditions.get("selector_state") or "visible"
+        cond_ok = _check_selector_condition(page, str(selector), str(selector_state))
+        results["selector"] = {"selector": selector, "state": selector_state, "ok": cond_ok}
+        checks.append(cond_ok)
+
+    text = conditions.get("text")
+    if text:
+        cond_ok = _check_text_condition(page, str(text))
+        results["text"] = {"text": text, "ok": cond_ok}
+        checks.append(cond_ok)
+
+    url_contains = conditions.get("url_contains")
+    if url_contains:
+        cond_ok = str(url_contains) in (getattr(page, "url", "") or "")
+        results["url_contains"] = {"needle": url_contains, "ok": cond_ok, "url": getattr(page, "url", None)}
+        checks.append(cond_ok)
+
+    title_contains = conditions.get("title_contains")
+    if title_contains:
+        try:
+            title = page.title()
+        except Exception:
+            title = None
+        cond_ok = title is not None and str(title_contains) in title
+        results["title_contains"] = {"needle": title_contains, "ok": cond_ok, "title": title}
+        checks.append(cond_ok)
+
+    load_state = conditions.get("load_state")
+    if load_state:
+        cond_ok = _check_load_state_condition(page, str(load_state))
+        results["load_state"] = {"load_state": load_state, "ok": cond_ok}
+        checks.append(cond_ok)
+
+    cookie_name = conditions.get("cookie_name")
+    if cookie_name:
+        domain_contains = conditions.get("cookie_domain_contains")
+        cookies: list[dict[str, Any]] = []
+        try:
+            cookies = list(page.context.cookies())
+        except Exception:
+            cookies = []
+        cond_ok = any(_cookie_match(c, name=str(cookie_name), domain_contains=domain_contains) for c in cookies)
+        results["cookie_name"] = {
+            "name": cookie_name,
+            "domain_contains": domain_contains,
+            "ok": cond_ok,
+            "cookie_count": len(cookies),
+        }
+        checks.append(cond_ok)
+
+    local_key = conditions.get("local_storage_key")
+    if local_key:
+        cond_ok = _check_storage_condition(page, kind="local", key=str(local_key))
+        results["local_storage_key"] = {"key": local_key, "ok": cond_ok}
+        checks.append(cond_ok)
+
+    session_key = conditions.get("session_storage_key")
+    if session_key:
+        cond_ok = _check_storage_condition(page, kind="session", key=str(session_key))
+        results["session_storage_key"] = {"key": session_key, "ok": cond_ok}
+        checks.append(cond_ok)
+
+    if match not in ("all", "any"):
+        match = "all"
+    ok = all(checks) if match == "all" else any(checks)
+    return ok, results
+
+
+def _check_handoff_once(
+    browser: Any,
+    *,
+    tab_index: Optional[int],
+    tab_url_contains: Optional[str],
+    conditions: dict[str, Any],
+    match: str,
+) -> dict[str, Any]:
+    context = _primary_context(browser)
+    pages = _primary_pages(context, create_if_empty=True)
+    tabs = _list_tabs_in_context(context)
+
+    candidates: list[tuple[int, Any]] = []
+    if tab_index is not None or tab_url_contains:
+        try:
+            _ctx, _pages, page, idx = _select_page(browser, tab_index=tab_index, tab_url_contains=tab_url_contains)
+            candidates = [(idx, page)]
+        except Exception as e:
+            return {
+                "done": False,
+                "error": str(e),
+                "tabs": tabs,
+            }
+    else:
+        for i, p in enumerate(pages):
+            url = getattr(p, "url", "") or ""
+            if url.startswith(("chrome-extension://", "devtools://")):
+                continue
+            candidates.append((i, p))
+
+    last_checked: Optional[dict[str, Any]] = None
+    for idx, page in candidates:
+        ok, cond_results = _check_handoff_conditions_on_page(page, conditions=conditions, match=match)
+        try:
+            title = page.title()
+        except Exception:
+            title = None
+        if ok:
+            return {
+                "done": True,
+                "matched_tab_index": idx,
+                "url": getattr(page, "url", None),
+                "title": title,
+                "condition_results": cond_results,
+                "tabs": tabs,
+            }
+        if last_checked is None:
+            last_checked = {
+                "checked_tab_index": idx,
+                "checked_url": getattr(page, "url", None),
+                "checked_title": title,
+                "condition_results": cond_results,
+            }
+
+    # Not done; include last-seen state for tab 0 if present.
+    fallback_url = None
+    fallback_title = None
+    if pages:
+        try:
+            fallback_url = pages[0].url
+        except Exception:
+            fallback_url = None
+        try:
+            fallback_title = pages[0].title()
+        except Exception:
+            fallback_title = None
+
+    out = {
+        "done": False,
+        "current_url": fallback_url,
+        "current_title": fallback_title,
+        "tabs": tabs,
+    }
+    if last_checked is not None:
+        out.update(last_checked)
+    return out
+
+
+def cmd_handoff(args: argparse.Namespace) -> None:
+    """
+    Create/check/clear a human handoff request.
+
+    This is a lightweight state machine:
+    - action=set: store the human instructions + completion checks (selector/text/url/cookie/storage)
+    - action=check: evaluate checks once, and mark done if satisfied
+    - action=wait: poll checks until satisfied or timeout
+    - action=get: return stored handoff (if any)
+    - action=clear: remove stored handoff
+    """
+    action = str(getattr(args, "action", "") or "").lower().strip()
+    if action not in ("set", "get", "check", "wait", "clear"):
+        output_error("Invalid --action. Use one of: set, get, check, wait, clear.")
+        sys.exit(1)
+
+    workspace_name = str(args.workspace) if getattr(args, "workspace", None) else None
+    ws: Optional[dict[str, Any]] = None
+    session_id: Optional[str] = getattr(args, "session_id", None)
+
+    if workspace_name:
+        try:
+            ws = _load_workspace(workspace_name)
+        except Exception as e:
+            output_error(f"Failed to load workspace: {e}")
+            sys.exit(1)
+        if not session_id:
+            active = ws.get("active_session_id")
+            session_id = str(active) if active else None
+
+    if not session_id and action in ("set", "check", "wait"):
+        if workspace_name:
+            output_error(
+                f"Workspace '{workspace_name}' has no active session. Start it first: start-workspace --name {workspace_name}"
+            )
+        else:
+            output_error("Missing session identifier. Provide --session-id or --workspace.")
+        sys.exit(1)
+
+    # Load existing handoff state.
+    existing = _get_pending_handoff(session_id=session_id, ws=ws, workspace_name=workspace_name)
+
+    if action == "get":
+        output_json({
+            "status": "success",
+            "command": "handoff",
+            "action": "get",
+            "workspace": workspace_name,
+            "session_id": session_id,
+            "handoff": existing,
+        })
+        return
+
+    if action == "clear":
+        _set_pending_handoff(
+            session_id=session_id,
+            ws=ws,
+            workspace_name=workspace_name,
+            handoff=None,
+            history_type="handoff_clear" if workspace_name else None,
+        )
+        output_json({
+            "status": "success",
+            "command": "handoff",
+            "action": "clear",
+            "workspace": workspace_name,
+            "session_id": session_id,
+            "message": "Handoff cleared.",
+        })
+        return
+
+    if action == "set":
+        instructions = getattr(args, "instructions", None)
+        if not instructions:
+            output_error("Missing --instructions for handoff set.")
+            sys.exit(1)
+
+        conditions = _handoff_conditions_from_args(args)
+        if not _handoff_has_any_check(conditions):
+            output_error(
+                "Provide at least one completion check: "
+                "--selector/--text/--url-contains/--title-contains/--cookie-name/--local-storage-key/--session-storage-key/--load-state"
+            )
+            sys.exit(1)
+
+        completion_hint = _handoff_completion_hint(conditions)
+        match_mode = str(getattr(args, "match", None) or "all").lower().strip()
+        if match_mode not in ("all", "any"):
+            match_mode = "all"
+        handoff: dict[str, Any] = {
+            "id": f"handoff_{_utc_now_iso()}",
+            "created_at": _utc_now_iso(),
+            "status": "pending",
+            "instructions": instructions,
+            "conditions": conditions,
+            "completion_hint": completion_hint,
+            "match": match_mode,
+            "tab_index": getattr(args, "tab_index", None),
+            "tab_url_contains": getattr(args, "tab_url_contains", None),
+        }
+        _set_pending_handoff(
+            session_id=session_id,
+            ws=ws,
+            workspace_name=workspace_name,
+            handoff=handoff,
+            history_type="handoff_set" if workspace_name else None,
+        )
+
+        # Best-effort attach live debugger URL so the agent can paste it immediately.
+        live_urls = None
+        try:
+            client = get_client()
+            live_urls = _get_live_urls_safe(client, str(session_id))
+        except Exception:
+            live_urls = None
+
+        result: dict[str, Any] = {
+            "status": "success",
+            "command": "handoff",
+            "action": "set",
+            "workspace": workspace_name,
+            "session_id": session_id,
+            "handoff": handoff,
+            "message": "Handoff set. Send the instructions + human_handoff.share_url to the user, then check later.",
+        }
+        if live_urls is not None:
+            _attach_human_handoff(result, live_urls, workspace=workspace_name, session_id=str(session_id))
+
+        # Convenience: a ready-to-send message payload for the agent.
+        share_text = ((result.get("human_handoff") or {}).get("share_text")) if isinstance(result.get("human_handoff"), dict) else None
+        share_md = ((result.get("human_handoff") or {}).get("share_markdown")) if isinstance(result.get("human_handoff"), dict) else None
+        if share_text or share_md:
+            stop_line_text = f"Stop when: {completion_hint}" if completion_hint else ""
+            stop_line_md = f"Stop when: {completion_hint}" if completion_hint else ""
+            result["suggested_user_message"] = {
+                "text": "\n".join([
+                    "Human step needed:",
+                    instructions.strip(),
+                    stop_line_text,
+                    "",
+                    share_text or "",
+                    "Keep the tab open. I'll detect completion and continue automatically.",
+                    "If it doesn't continue, reply 'done' and I'll re-check.",
+                ]).strip(),
+                "markdown": "\n".join([
+                    "**Human step needed:**",
+                    instructions.strip(),
+                    stop_line_md,
+                    "",
+                    share_md or "",
+                    "Keep the tab open. I'll detect completion and continue automatically.",
+                    "If it doesn't continue, reply **done** and I'll re-check.",
+                ]).strip(),
+            }
+        output_json(result)
+        return
+
+    # check / wait
+    if not existing:
+        output_json({
+            "status": "success",
+            "command": "handoff",
+            "action": action,
+            "workspace": workspace_name,
+            "session_id": session_id,
+            "handoff": None,
+            "done": False,
+            "message": "No handoff is currently set.",
+        })
+        return
+
+    conditions = dict((existing or {}).get("conditions") or {})
+    tab_index = (existing or {}).get("tab_index")
+    tab_url_contains = (existing or {}).get("tab_url_contains")
+    match_mode = str((existing or {}).get("match") or "all").lower().strip()
+    if match_mode not in ("all", "any"):
+        match_mode = "all"
+
+    timeout_ms = int(getattr(args, "timeout_ms", 0) or 0)
+    if action == "check":
+        timeout_ms = 0
+    if action == "wait" and timeout_ms <= 0:
+        timeout_ms = 300000  # 5 min default for wait
+
+    pw, browser, _page = _connect_playwright(str(session_id))
+    try:
+        started = time.time()
+        last = None
+        while True:
+            last = _check_handoff_once(
+                browser,
+                tab_index=tab_index,
+                tab_url_contains=tab_url_contains,
+                conditions=conditions,
+                match=match_mode,
+            )
+            if last.get("done"):
+                existing["status"] = "done"
+                existing["done_at"] = _utc_now_iso()
+                _set_pending_handoff(
+                    session_id=session_id,
+                    ws=ws,
+                    workspace_name=workspace_name,
+                    handoff=existing,
+                    history_type="handoff_done" if workspace_name else None,
+                )
+                break
+
+            if action == "check":
+                break
+
+            elapsed_ms = int((time.time() - started) * 1000)
+            if elapsed_ms >= timeout_ms:
+                break
+            time.sleep(0.5)
+
+        result: dict[str, Any] = {
+            "status": "success",
+            "command": "handoff",
+            "action": action,
+            "workspace": workspace_name,
+            "session_id": session_id,
+            "handoff": existing,
+            **(last or {}),
+        }
+
+        # If we are operating on a workspace, sync tab snapshot so the agent can "take back over"
+        # after the human has been driving in the live debugger.
+        if workspace_name and ws is not None:
+            try:
+                tabs_snapshot = _collect_tabs_from_browser(browser)
+                ws["tabs"] = tabs_snapshot
+                ws["tabs_captured_at"] = _utc_now_iso()
+                _append_ws_history(ws, {
+                    "ts": _utc_now_iso(),
+                    "type": "handoff_check",
+                    "session_id": session_id,
+                    "done": bool(result.get("done")),
+                    "matched_tab_index": result.get("matched_tab_index"),
+                })
+                _save_workspace(workspace_name, ws)
+                result["workspace_tabs_count"] = len(tabs_snapshot)
+            except Exception as e:
+                result["workspace_update_error"] = str(e)
+
+        # If not done, include a fresh live debugger URL when possible.
+        if not result.get("done"):
+            try:
+                client = get_client()
+                live_urls = _get_live_urls_safe(client, str(session_id))
+                if live_urls is not None:
+                    _attach_human_handoff(result, live_urls, workspace=workspace_name, session_id=str(session_id))
+            except Exception:
+                pass
+
+            # Provide a ready-to-send reprompt message for the user.
+            if isinstance(result.get("human_handoff"), dict):
+                instructions = str((existing or {}).get("instructions") or "").strip()
+                completion_hint = (existing or {}).get("completion_hint") or _handoff_completion_hint(conditions)
+                share_text = str(result["human_handoff"].get("share_text") or "").strip()
+                share_md = str(result["human_handoff"].get("share_markdown") or "").strip()
+                if instructions and (share_text or share_md):
+                    stop_line_text = f"Stop when: {completion_hint}" if completion_hint else ""
+                    stop_line_md = f"Stop when: {completion_hint}" if completion_hint else ""
+                    result["suggested_user_message"] = {
+                        "text": "\n".join([
+                            "Human step needed:",
+                            instructions,
+                            stop_line_text,
+                            "",
+                            share_text,
+                            "Keep the tab open. I'll detect completion and continue automatically.",
+                            "If it doesn't continue, reply 'done' and I'll re-check.",
+                        ]).strip(),
+                        "markdown": "\n".join([
+                            "**Human step needed:**",
+                            instructions,
+                            stop_line_md,
+                            "",
+                            share_md,
+                            "Keep the tab open. I'll detect completion and continue automatically.",
+                            "If it doesn't continue, reply **done** and I'll re-check.",
+                        ]).strip(),
+                    }
+
+        output_json(result)
+    finally:
+        try:
+            browser.close()
+        except Exception:
+            pass
+        try:
+            pw.stop()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -2806,6 +3588,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Block ads")
     p_sw.add_argument("--no-record", action="store_true", default=False,
                       help="Disable session recording (recording is ON by default)")
+    p_sw.add_argument("--no-logs", action="store_true", default=False,
+                      help="Disable session logging (logging is ON by default)")
     p_sw.add_argument("--no-solve-captchas", action="store_true", default=False,
                       help="Disable captcha solving (captcha solving is ON by default)")
     p_sw.add_argument("--viewport-width", type=int, default=None,
@@ -2836,6 +3620,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Block ads")
     p_rw.add_argument("--no-record", action="store_true", default=False,
                       help="Disable session recording (recording is ON by default)")
+    p_rw.add_argument("--no-logs", action="store_true", default=False,
+                      help="Disable session logging (logging is ON by default)")
     p_rw.add_argument("--no-solve-captchas", action="store_true", default=False,
                       help="Disable captcha solving (captcha solving is ON by default)")
     p_rw.add_argument("--viewport-width", type=int, default=None,
@@ -2876,6 +3662,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Block ads")
     p_cs.add_argument("--no-record", action="store_true", default=False,
                        help="Disable session recording (recording is ON by default)")
+    p_cs.add_argument("--no-logs", action="store_true", default=False,
+                       help="Disable session logging (logging is ON by default)")
     p_cs.add_argument("--no-solve-captchas", action="store_true", default=False,
                        help="Disable captcha solving (captcha solving is ON by default)")
     p_cs.add_argument("--viewport-width", type=int, default=None,
@@ -3074,11 +3862,55 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Path to save rrweb events (e.g. /tmp/session.rrweb.json)")
     p_rec.set_defaults(func=cmd_get_recording)
 
+    # -- get-downloads --
+    p_dl = subparsers.add_parser("get-downloads", help="Download files saved during the session (archive)")
+    p_dl.add_argument("--session-id", default=None, help="Session ID")
+    p_dl.add_argument("--workspace", default=None, help="Use the active session from a workspace")
+    p_dl.add_argument("--output", required=True, help="Path to save the downloads archive (e.g. /tmp/downloads.zip)")
+    p_dl.set_defaults(func=cmd_get_downloads)
+
     # -- get-logs --
     p_log = subparsers.add_parser("get-logs", help="Get session logs")
     p_log.add_argument("--session-id", default=None, help="Session ID")
     p_log.add_argument("--workspace", default=None, help="Use the active session from a workspace")
     p_log.set_defaults(func=cmd_get_logs)
+
+    # -- handoff --
+    p_ho = subparsers.add_parser("handoff", help="Manage a human handoff (set/check/wait/clear)")
+    p_ho.add_argument("--action", required=True, choices=["set", "get", "check", "wait", "clear"],
+                      help="Handoff action")
+    p_ho.add_argument("--session-id", default=None, help="Session ID")
+    p_ho.add_argument("--workspace", default=None, help="Use the active session from a workspace")
+    p_ho.add_argument("--instructions", default=None,
+                      help="(set) Human instructions to perform in the live debugger")
+    p_ho.add_argument("--tab-index", type=int, default=None,
+                      help="(set) Tab index to monitor (optional)")
+    p_ho.add_argument("--tab-url-contains", default=None,
+                      help="(set) Monitor the first tab whose URL contains this text (optional)")
+    p_ho.add_argument("--selector", default=None, help="(set) Completion check: CSS selector")
+    p_ho.add_argument("--selector-state", default="visible",
+                      choices=["attached", "detached", "visible", "hidden"],
+                      help="(set) Required selector state")
+    p_ho.add_argument("--text", default=None, help="(set) Completion check: page text contains")
+    p_ho.add_argument("--url-contains", dest="url_contains", default=None, help="(set) Completion check: URL contains")
+    p_ho.add_argument("--title-contains", dest="title_contains", default=None,
+                      help="(set) Completion check: title contains")
+    p_ho.add_argument("--load-state", dest="load_state", default=None,
+                      choices=["load", "domcontentloaded", "networkidle"],
+                      help="(set) Completion check: page load state")
+    p_ho.add_argument("--cookie-name", dest="cookie_name", default=None,
+                      help="(set) Completion check: cookie exists (by name)")
+    p_ho.add_argument("--cookie-domain-contains", dest="cookie_domain_contains", default=None,
+                      help="(set) Optional cookie domain substring filter")
+    p_ho.add_argument("--local-storage-key", dest="local_storage_key", default=None,
+                      help="(set) Completion check: localStorage key exists")
+    p_ho.add_argument("--session-storage-key", dest="session_storage_key", default=None,
+                      help="(set) Completion check: sessionStorage key exists")
+    p_ho.add_argument("--match", choices=["all", "any"], default="all",
+                      help="(set) Combine multiple checks with all=AND (default) or any=OR")
+    p_ho.add_argument("--timeout-ms", type=int, default=0,
+                      help="(wait) Max time to wait for completion (ms). Default for wait: 300000")
+    p_ho.set_defaults(func=cmd_handoff)
 
     # -- live-url --
     p_lu = subparsers.add_parser("live-url", help="Get live debug URL")
