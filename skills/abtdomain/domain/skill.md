@@ -37,6 +37,18 @@ With API key (optional, for higher limits):
   }
 }
 ```
+**For Claude Desktop** (requires mcp-remote):
+```json
+{
+  "mcpServers": {
+    "domainkits": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://api.domainkits.com/v1/mcp", "--transport", "http-first"]
+    }
+  }
+}
+```
+
 
 ---
 
