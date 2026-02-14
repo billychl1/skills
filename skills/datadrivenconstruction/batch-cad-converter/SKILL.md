@@ -1,6 +1,5 @@
 ---
-slug: "batch-cad-converter"
-display_name: "Batch CAD Converter"
+name: "batch-cad-converter"
 description: "Batch convert multiple CAD/BIM files (Revit, IFC, DWG, DGN) with progress tracking, error handling, and consolidated reporting."
 ---
 
