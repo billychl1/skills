@@ -68,6 +68,24 @@ async function main() {
 
     const recentEvents = events.slice(-10).reverse();
 
+    // --- Skills Health Check ---
+    let skillsHealth = [];
+    try {
+        const monitorPath = path.join(__dirname, 'skills_monitor.js');
+        if (fs.existsSync(monitorPath)) {
+            const monitor = require('./skills_monitor.js');
+            // Run check (autoHeal=false to just report)
+            const issues = monitor.run({ autoHeal: false });
+            if (issues.length === 0) {
+                skillsHealth = ["✅ All skills healthy"];
+            } else {
+                skillsHealth = issues.map(i => `❌ **${i.name}**: ${i.issues.join(', ')}`);
+            }
+        }
+    } catch (e) {
+        skillsHealth = [`⚠️ Skills check failed: ${e.message}`];
+    }
+
     // --- Markdown Generation ---
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
     let md = `# 🧬 Evolution Dashboard\n\n`;
@@ -81,6 +99,12 @@ async function main() {
     md += `| **Innovation** | ${intents.innovate} | ✨ |\n`;
     md += `| **Repair** | ${intents.repair} | 🔧 |\n`;
     md += `| **Optimize** | ${intents.optimize} | ⚡ |\n\n`;
+
+    md += `## 🛠️ Skills Health\n\n`;
+    for (const line of skillsHealth) {
+        md += `- ${line}\n`;
+    }
+    md += `\n`;
 
     md += `## 🕒 Recent Activity\n\n`;
     md += `| Cycle ID | Intent | Signals | Outcome | Time |\n`;

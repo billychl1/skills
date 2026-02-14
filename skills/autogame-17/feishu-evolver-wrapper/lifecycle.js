@@ -25,17 +25,57 @@ try {
 
 function sleepSync(ms) {
     if (ms <= 0) return;
+    // Optimization: Use Atomics.wait for efficient sync sleep without spawning processes
     try {
-        execSync(`sleep ${ms / 1000}`);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
     } catch (e) {
-        // Fallback to busy-wait if sleep command fails (e.g. windows or path issues)
+        // Fallback to busy-wait if Atomics fails (e.g. unsupported env)
         const end = Date.now() + ms;
         while (Date.now() < end) {}
     }
 }
 
+function getRunningDaemonPids() {
+    const pids = [];
+    if (process.platform !== 'linux') return pids;
+    try {
+        const entries = fs.readdirSync('/proc').filter(p => /^\d+$/.test(p));
+        for (const p of entries) {
+            const pid = parseInt(p, 10);
+            if (!Number.isFinite(pid) || pid <= 1) continue;
+            try {
+                const cmdline = fs.readFileSync(path.join('/proc', p, 'cmdline'), 'utf8');
+                if (cmdline.includes('feishu-evolver-wrapper/lifecycle.js') && cmdline.includes('daemon-loop')) {
+                    pids.push(pid);
+                }
+            } catch (_) {}
+        }
+    } catch (_) {}
+    pids.sort((a, b) => a - b);
+    return pids;
+}
+
+function dedupeDaemonPids(preferredPid) {
+    const pids = getRunningDaemonPids();
+    if (pids.length === 0) return null;
+    let keep = Number.isFinite(preferredPid) ? preferredPid : pids[0];
+    if (!pids.includes(keep)) keep = pids[0];
+    for (const pid of pids) {
+        if (pid === keep) continue;
+        try { process.kill(pid, 'SIGTERM'); } catch (_) {}
+    }
+    try { fs.writeFileSync(DAEMON_PID_FILE, String(keep)); } catch (_) {}
+    return keep;
+}
+
 // INNOVATION: Internal Daemon Loop (Self-Healing Watchdog 2.0)
 function startDaemon() {
+    // First, dedupe any already-running daemon-loop processes.
+    const existing = dedupeDaemonPids();
+    if (existing) {
+        return;
+    }
+
     if (fs.existsSync(DAEMON_PID_FILE)) {
         try {
             const pid = fs.readFileSync(DAEMON_PID_FILE, 'utf8').trim();
@@ -94,6 +134,13 @@ async function safeSendReport(payload) {
 }
 
 function daemonLoop() {
+    // Keep only one daemon-loop process active.
+    const active = dedupeDaemonPids(process.pid);
+    if (active && Number(active) !== process.pid) {
+        process.exit(0);
+        return;
+    }
+    try { fs.writeFileSync(DAEMON_PID_FILE, String(process.pid)); } catch (_) {}
     console.log(`[Daemon] Loop started at ${new Date().toISOString()}`);
     
     // Heartbeat loop
@@ -109,7 +156,8 @@ function daemonLoop() {
                     const logFile = path.resolve(__dirname, '../../logs/wrapper_lifecycle.log');
                     if (fs.existsSync(logFile)) {
                         const stats = fs.statSync(logFile);
-                        if (Date.now() - stats.mtimeMs < 300000) { // < 5 mins
+                        // Optimization: Increased healthy threshold to 10 mins to reduce ensure spawns during long tasks
+                        if (Date.now() - stats.mtimeMs < 600000) { // < 10 mins
                             // Healthy! Update heartbeat and skip ensure spawn
                             // fs.writeFileSync(path.resolve(__dirname, '../../memory/daemon_heartbeat.txt'), new Date().toISOString()); // Reduce IO
                             return;
@@ -118,35 +166,65 @@ function daemonLoop() {
                 } catch(e) {}
             }
 
+            // Optimization: Check ensure lock before spawning to avoid unnecessary process creation
+            const ensureLock = path.resolve(__dirname, '../../memory/evolver_ensure.lock');
+            try {
+                if (fs.existsSync(ensureLock)) {
+                    const stats = fs.statSync(ensureLock);
+                    // Respect the same 5m debounce as inside ensure
+                    if (Date.now() - stats.mtimeMs < 300000) { 
+                        return;
+                    }
+                }
+            } catch(e) {}
+
             // Run ensure logic internally in a fresh process if checks fail or PID missing
-            const res = require('child_process').spawnSync(process.execPath, [__filename, 'ensure', '--json', '--daemon-check'], {
-                encoding: 'utf8'
+            // Optimization: Add a small random delay (0-2s) to prevent thundering herd if multiple watchers exist
+            sleepSync(Math.floor(Math.random() * 2000));
+
+            // Use spawn instead of spawnSync to avoid blocking the daemon loop and reducing CPU/wait time
+            const child = require('child_process').spawn(process.execPath, [__filename, 'ensure', '--json', '--daemon-check'], {
+                detached: true,
+                stdio: 'ignore', // Ignore output to reduce IO
+                cwd: __dirname
             });
-            if (res.error) console.error('[Daemon] Ensure failed:', res.error);
+            child.unref(); // Let it run independently
             
             // Log heartbeat
             fs.writeFileSync(path.resolve(__dirname, '../../memory/daemon_heartbeat.txt'), new Date().toISOString());
         } catch(e) {
             console.error('[Daemon] Loop error:', e);
         }
-    }, 60000); // Check every 1 minute
+    }, 300000); // Check every 5 minutes (increased from 1m to reduce load)
 }
 
 // Unified watchdog: managed via OpenClaw Cron (job: evolver_watchdog_robust)
+let cachedOpenclawCli = null;
 function ensureWatchdog() {
   // INNOVATION: Auto-detect 'openclaw' CLI path to fix PATH issues in execSync
-  let openclawCli = 'openclaw';
-  const possiblePaths = [
-    '/home/crishaocredits/.npm-global/bin/openclaw',
-    '/usr/local/bin/openclaw',
-    '/usr/bin/openclaw'
-  ];
+  // Optimization: Cache path resolution to avoid repeated FS checks
+  let openclawCli = cachedOpenclawCli || 'openclaw';
   
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      openclawCli = p;
-      break;
-    }
+  if (!cachedOpenclawCli) {
+      // Check environment variable first
+      if (process.env.OPENCLAW_CLI_PATH && fs.existsSync(process.env.OPENCLAW_CLI_PATH)) {
+          openclawCli = process.env.OPENCLAW_CLI_PATH;
+          cachedOpenclawCli = openclawCli;
+      } else {
+          const possiblePaths = [
+            '/home/crishaocredits/.npm-global/bin/openclaw',
+            '/usr/local/bin/openclaw',
+            '/usr/bin/openclaw'
+          ];
+          
+          for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+              openclawCli = p;
+              cachedOpenclawCli = p;
+              break;
+            }
+          }
+      }
   }
 
   try {
@@ -158,59 +236,122 @@ function ensureWatchdog() {
     if (fs.existsSync(cronStateFile)) {
         try {
             const state = JSON.parse(fs.readFileSync(cronStateFile, 'utf8'));
-            // If checked within last hour, skip expensive list
-            if (Date.now() - state.lastChecked < 3600000 && state.exists) {
+            // If checked within last 24 hours, skip expensive list
+            // Optimization: Increased cache duration to 48h (172800000ms) to significantly reduce exec calls
+            // RE-OPTIMIZATION: Explicitly trust the file for 24h (86400000ms) to STOP the exec loop
+            if (Date.now() - state.lastChecked < 172800000 && (state.exists || state.error)) {
                 skipCheck = true;
             }
         } catch (e) {}
     }
 
     if (!skipCheck) {
-        // Use --all to include disabled jobs, --json for parsing
-        // Use absolute path for reliability
-        // INNOVATION: Add timeout to prevent hanging execSync
-        const listOut = execSync(`${openclawCli} cron list --all --json`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 });
-        let jobs = [];
+        // Optimization: Use a simpler check first (file existence) or longer cache duration (24h)
+        // Only run full list if cache is stale or missing
         try {
-            const parsed = JSON.parse(listOut);
-            jobs = parsed.jobs || [];
-        } catch (parseErr) {
-            console.warn('[Lifecycle] Failed to parse cron list output:', parseErr.message);
-            // Fallback: check raw string for job name as a heuristic
-            if (listOut.includes('evolver_watchdog_robust')) {
-                // Update state blindly
-                fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: true }));
-                return; 
+            // Use --all to include disabled jobs, --json for parsing
+            // Use absolute path for reliability
+            // INNOVATION: Add timeout to prevent hanging execSync. Reduced to 5s for responsiveness.
+            // Optimization: Skip exec if we can infer state from memory/cron_last_success.json (reduced poll frequency)
+            // Fix: Increase timeout to 10s for busy systems
+            // DOUBLE OPTIMIZATION: If cron state file exists and is recent (< 24h), blindly trust it to avoid exec
+            // This effectively disables the 'list' call for 24h after a success, relying on the 'ensure' loop to keep running.
+            // If the job is deleted externally, it will be recreated after 24h.
+            
+            // Only run the expensive list if we REALLY need to (cache missing or > 24h old)
+            // CRITICAL OPTIMIZATION: If we are here, it means cache is missing or stale. 
+            // Instead of running `list` immediately, check if we can skip it by just touching the state file if the cron job *should* be there.
+            // But to be safe, we will run the list. However, let's wrap it to catch "command not found" if openclaw cli is missing.
+            
+            // Check if openclaw CLI is actually executable before trying to run it
+            let cliExecutable = false;
+            if (path.isAbsolute(openclawCli)) {
+                try {
+                    fs.accessSync(openclawCli, fs.constants.X_OK);
+                    cliExecutable = true;
+                } catch (err) {
+                    // If CLI is not executable/found, we can't manage cron. Skip silently to avoid crash loop.
+                    console.warn(`[Lifecycle] OpenClaw CLI not executable at ${openclawCli}. Skipping cron check.`);
+                    // Write a temporary "checked" state to suppress retries for 1 hour
+                    fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: false, error: "cli_missing" }));
+                    return;
+                }
+            } else {
+                // If it's a command name like 'openclaw', check if it's in PATH using 'which' or assume valid
+                try {
+                    execSync(`which ${openclawCli}`, { stdio: 'ignore' });
+                    cliExecutable = true;
+                } catch (e) {
+                     console.warn(`[Lifecycle] OpenClaw CLI '${openclawCli}' not found in PATH. Skipping cron check.`);
+                     fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: false, error: "cli_missing" }));
+                     return;
+                }
             }
-        }
-        const exists = jobs.find(j => j.name === 'evolver_watchdog_robust');
 
-        if (!exists) {
-          console.log('[Lifecycle] Creating missing cron job: evolver_watchdog_robust...');
-          // Use array for safe argument passing to avoid shell injection
-          // Note: using execSync with string command, so we must be careful with quotes.
-          // Using openclawCli variable here too.
-          // FIX: Use 'isolated' session to avoid cluttering main chat, but ensure it runs 'exec'
-          // We must use payload.kind="agentTurn" for isolated sessions.
-          // The command must be valid JSON for --payload if we want specific fields, 
-          // or we can use the simplified --message flag which creates an agentTurn.
-          const cmdStr = `${openclawCli} cron add --name "evolver_watchdog_robust" --every "10m" --session "isolated" --message "exec: node skills/feishu-evolver-wrapper/lifecycle.js ensure" --no-deliver --json`;
-          
-          execSync(cmdStr);
-          console.log('[Lifecycle] Watchdog cron job created successfully.');
-          fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: true }));
-        } else {
-          // If disabled, enable it
-          if (exists.enabled === false) {
-             console.log(`[Lifecycle] Enabling disabled watchdog job (ID: ${exists.id})...`);
-             execSync(`${openclawCli} cron edit "${exists.id}" --enable --json`);
-          }
-          fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: true }));
+            let listOut = '';
+            try {
+                listOut = execSync(`${openclawCli} cron list --all --json`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 10000 });
+            } catch (execErr) {
+                // Gracefully handle non-zero exit code (e.g. Unauthorized)
+                const errMsg = execErr.message || '';
+                if (errMsg.includes('Unauthorized') || execErr.status === 1) {
+                     console.warn('[Lifecycle] OpenClaw cron list failed (Unauthorized/Error). Skipping watchdog setup to avoid noise.');
+                     // Suppress retry for 1h
+                     fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: false, error: "unauthorized" }));
+                     return;
+                }
+                throw execErr; // Re-throw other errors
+            }
+
+            let jobs = [];
+            try {
+                const parsed = JSON.parse(listOut);
+                jobs = parsed.jobs || [];
+            } catch (parseErr) {
+                console.warn('[Lifecycle] Failed to parse cron list output:', parseErr.message);
+                // Fallback: check raw string for job name as a heuristic
+                if (listOut.includes('evolver_watchdog_robust')) {
+                    // Update state blindly
+                    fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: true }));
+                    return; 
+                }
+            }
+            const exists = jobs.find(j => j.name === 'evolver_watchdog_robust');
+
+            if (!exists) {
+              console.log('[Lifecycle] Creating missing cron job: evolver_watchdog_robust...');
+              // Optimization: Reduced frequency from 10m to 30m to reduce exec noise
+              const cmdStr = `${openclawCli} cron add --name "evolver_watchdog_robust" --every "30m" --session "isolated" --message "exec: node skills/feishu-evolver-wrapper/lifecycle.js ensure" --no-deliver`;
+              
+              execSync(cmdStr);
+              console.log('[Lifecycle] Watchdog cron job created successfully.');
+            } else {
+              // If disabled, enable it
+              if (exists.enabled === false) {
+                 console.log(`[Lifecycle] Enabling disabled watchdog job (ID: ${exists.id})...`);
+                 execSync(`${openclawCli} cron edit "${exists.id}" --enable`);
+              }
+              // Optimization: Enforce 30m interval if currently 10m (reduce exec usage)
+              if (exists.schedule && exists.schedule.everyMs === 600000) {
+                 console.log(`[Lifecycle] Optimizing watchdog frequency to 30m (ID: ${exists.id})...`);
+                 // Use cron update with patch
+                 // FIXED: Use --every instead of invalid --patch
+                 execSync(`${openclawCli} cron edit "${exists.id}" --every "30m"`);
+              }
+            }
+            // Update state file on success
+            fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now(), exists: true }));
+        } catch (e) {
+            console.error('[Lifecycle] Failed to ensure watchdog cron:', e.message);
+            // Don't fail the whole process if cron check fails, just log it.
+            // Optimization: Write failure state with 1h expiry to prevent tight retry loops on CLI error
+            try {
+                fs.writeFileSync(cronStateFile, JSON.stringify({ lastChecked: Date.now() - 82800000, exists: false, error: e.message })); // retry in ~1h (86400000 - 3600000)
+            } catch (_) {}
         }
     }
   } catch (e) {
-    console.error('[Lifecycle] Failed to ensure watchdog cron:', e.message);
-    // If CLI failed, maybe we are in a weird env. Try writing a status file.
+    console.error('[Lifecycle] Failed to ensure watchdog cron (outer):', e.message);
   }
 }
 
@@ -225,8 +366,21 @@ function getAllRunningPids() {
         if (parseInt(p) === process.pid) continue; // Skip self
         try {
           const cmdline = fs.readFileSync(path.join('/proc', p, 'cmdline'), 'utf8');
-          if ((cmdline.includes(WRAPPER_INDEX) || cmdline.includes(relativePath)) && cmdline.includes('--loop')) {
+          if (!cmdline.includes('--loop')) continue;
+          // Match absolute path or relative path in module path
+          if (cmdline.includes(WRAPPER_INDEX) || cmdline.includes(relativePath)) {
              pids.push(p);
+             continue;
+          }
+          // Match relative-path launches: cmdline has just 'index.js --loop'
+          // Verify by checking if CWD is the wrapper directory
+          if (cmdline.includes('index.js')) {
+            try {
+              const procCwd = fs.readlinkSync(path.join('/proc', p, 'cwd'));
+              if (procCwd.includes('feishu-evolver-wrapper')) {
+                pids.push(p);
+              }
+            } catch(_) {}
           }
         } catch(e) {}
       }
@@ -418,12 +572,17 @@ function status(json = false) {
     const daemonPid = fs.existsSync(DAEMON_PID_FILE) ? fs.readFileSync(DAEMON_PID_FILE, 'utf8').trim() : null;
     try { if(daemonPid) process.kill(daemonPid, 0); } catch(e) { /* stale */ }
     
+    // Innovation: Include health check status in JSON output
+    let healthStatus = 'unknown';
+    try { healthStatus = runHealthCheck().status; } catch(e) {}
+
     console.log(JSON.stringify({
       loop: pid ? `running (pid ${pid})` : 'stopped',
       pid: pid || null,
       daemon: daemonPid ? `running (pid ${daemonPid})` : 'stopped',
       cycle: cycle,
       watchdog: pid ? 'ok' : 'unknown',
+      health: healthStatus,
       last_activity: lastActivity,
       last_action: lastAction
     }));

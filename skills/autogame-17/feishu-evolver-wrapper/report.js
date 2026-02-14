@@ -5,9 +5,16 @@ const os = require('os');
 const { program } = require('commander');
 const { execSync } = require('child_process');
 const { sendCard } = require('./feishu-helper.js');
-const { fetchWithAuth } = require('../common/feishu-client.js');
+const { fetchWithAuth } = require('../feishu-common/index.js');
 const { generateDashboardCard } = require('./utils/dashboard-generator.js');
 const crypto = require('crypto');
+
+// Check for integration key (tenant_access_token or webhook)
+const integrationKey = process.env.FEISHU_APP_ID || process.env.FEISHU_BOT_NAME;
+if (!integrationKey) {
+  console.warn('⚠️ Integration key missing (FEISHU_APP_ID). Reporting might fail or degrade to console only.');
+  // Don't exit, just warn - we might be in a test env
+}
 
 // --- REPORT DEDUP ---
 const DEDUP_FILE = path.resolve(__dirname, '../../memory/report_dedup.json');
@@ -58,8 +65,25 @@ function getDashboardStats() {
         const successRate = ((successful / total) * 100).toFixed(1);
         
         const intents = { innovate: 0, repair: 0, optimize: 0 };
+        let totalFiles = 0, totalLines = 0, countBlast = 0;
+        let totalRigor = 0, totalRisk = 0, countPers = 0;
+
         events.forEach(e => {
             if (intents[e.intent] !== undefined) intents[e.intent]++;
+            
+            // Blast Radius Stats (Recent 10)
+            if (e.blast_radius) {
+                totalFiles += (e.blast_radius.files || 0);
+                totalLines += (e.blast_radius.lines || 0);
+                countBlast++;
+            }
+            
+            // Personality Stats (Recent 10)
+            if (e.personality_state) {
+                totalRigor += (e.personality_state.rigor || 0);
+                totalRisk += (e.personality_state.risk_tolerance || 0);
+                countPers++;
+            }
         });
 
         const recent = events.slice(-5).reverse().map(e => ({
@@ -68,7 +92,11 @@ function getDashboardStats() {
             status: e.outcome && e.outcome.status === 'success' ? '✅' : '❌'
         }));
 
-        return { total, successRate, intents, recent };
+        const avgFiles = countBlast > 0 ? (totalFiles / countBlast).toFixed(1) : 0;
+        const avgLines = countBlast > 0 ? (totalLines / countBlast).toFixed(0) : 0;
+        const avgRigor = countPers > 0 ? (totalRigor / countPers).toFixed(2) : 0;
+
+        return { total, successRate, intents, recent, avgFiles, avgLines, avgRigor };
     } catch (e) {
         return null;
     }
@@ -90,15 +118,83 @@ try {
     // Try to load the optimized monitor first
     sysMon = require('../common/system-monitor/index.js');
 } catch (e) {
-    // Fallback: minimal implementation using child_process (discouraged but functional)
+    // Optimized Native Implementation (Linux/Node 18+)
     sysMon = {
-        getProcessCount: () => { try { return execSync('ps -e | wc -l').toString().trim(); } catch(e){ return '?'; } },
-        getDiskUsage: () => { try { return execSync("df -h / | tail -1 | awk '{print $5}'").toString().trim(); } catch(e){ return '?'; } },
-        getLastLine: (f) => { try { return execSync(`tail -n 1 "${f}"`).toString().trim(); } catch(e){ return ''; } }
+        getProcessCount: () => {
+            try {
+                // Linux: Count numeric directories in /proc
+                if (process.platform === 'linux') {
+                    return fs.readdirSync('/proc').filter(f => /^\d+$/.test(f)).length;
+                }
+                // Fallback for non-Linux
+                return execSync('ps -e | wc -l').toString().trim();
+            } catch(e){ return '?'; }
+        },
+        getDiskUsage: (mount) => {
+            try {
+                if (fs.statfsSync) {
+                    const stats = fs.statfsSync(mount || '/');
+                    const total = stats.blocks * stats.bsize;
+                    const free = stats.bavail * stats.bsize;
+                    const used = total - free;
+                    return Math.round((used / total) * 100) + '%';
+                }
+                // Fallback for older Node
+                return execSync(`df -h "${mount || '/'}" | tail -1 | awk '{print $5}'`).toString().trim();
+            } catch(e){ return '?'; }
+        },
+        getLastLine: (f) => {
+            try {
+                if (!fs.existsSync(f)) return '';
+                const fd = fs.openSync(f, 'r');
+                const stat = fs.fstatSync(fd);
+                const size = stat.size;
+                if (size === 0) { fs.closeSync(fd); return ''; }
+                
+                const bufSize = Math.min(1024, size);
+                const buffer = Buffer.alloc(bufSize);
+                let position = size - bufSize;
+                fs.readSync(fd, buffer, 0, bufSize, position);
+                fs.closeSync(fd);
+                
+                let content = buffer.toString('utf8');
+                // Trim trailing newline if present
+                if (content.endsWith('\n')) content = content.slice(0, -1);
+                const lastBreak = content.lastIndexOf('\n');
+                return lastBreak === -1 ? content : content.slice(lastBreak + 1);
+            } catch(e){ return ''; }
+        }
     };
 }
 
 const STATE_FILE = path.resolve(__dirname, '../../memory/evolution_state.json');
+const CYCLE_COUNTER_FILE = path.resolve(__dirname, '../../logs/cycle_count.txt');
+
+function parseCycleNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+    const text = String(value || '').trim();
+    if (!text) return null;
+    if (/^\d+$/.test(text)) return parseInt(text, 10);
+    const m = text.match(/(\d{1,})/);
+    if (!m) return null;
+    return parseInt(m[1], 10);
+}
+
+function isStaleCycleReport(cycleId) {
+    try {
+        const currentRaw = fs.existsSync(CYCLE_COUNTER_FILE)
+            ? fs.readFileSync(CYCLE_COUNTER_FILE, 'utf8').trim()
+            : '';
+        const current = /^\d+$/.test(currentRaw) ? parseInt(currentRaw, 10) : null;
+        const candidate = parseCycleNumber(cycleId);
+        if (!Number.isFinite(current) || !Number.isFinite(candidate)) return false;
+        const windowSize = Number.parseInt(process.env.EVOLVE_STALE_CYCLE_WINDOW || '5', 10);
+        if (!Number.isFinite(windowSize) || windowSize < 0) return false;
+        return candidate < (current - windowSize);
+    } catch (_) {
+        return false;
+    }
+}
 
 function getCycleInfo() {
     let nextId = 1;
@@ -203,6 +299,10 @@ async function sendReport(options) {
     // Prepare Title
     const cycleInfo = options.cycle ? { id: options.cycle, duration: 'Manual' } : getCycleInfo();
     const cycleId = cycleInfo.id;
+    if (isStaleCycleReport(cycleId)) {
+        console.warn(`[Wrapper] Suppressing stale report for cycle #${cycleId}.`);
+        return;
+    }
     let title = options.title;
 
     if (!title) {
@@ -224,7 +324,7 @@ async function sendReport(options) {
     }
     
     if (!target) {
-        console.log('[Wrapper] No Evolution Group (🧬) found. Falling back to Master ID.');
+        console.warn('[Wrapper] No Evolution Group (🧬) found. Explicitly falling back to Master ID.');
         target = MASTER_ID;
     }
 
@@ -242,6 +342,8 @@ async function sendReport(options) {
 **📊 Dashboard Snapshot**
 - **Success Rate:** ${stats.successRate}% (${stats.total} Cycles)
 - **Breakdown:** ✨${stats.intents.innovate} 🔧${stats.intents.repair} ⚡${stats.intents.optimize}
+- **Avg Blast:** ${stats.avgFiles} files / ${stats.avgLines} lines
+- **Avg Rigor:** ${stats.avgRigor || 'N/A'} (0.0-1.0)
 - **Recent:** ${trend}`;
     }
     // --- END SNAPSHOT ---
@@ -264,9 +366,17 @@ async function sendReport(options) {
                 const pid = parseInt(fs.readFileSync(wrapperPidFile, 'utf8').trim(), 10);
                 if (Number.isFinite(pid) && pid > 1) {
                     try {
-                        const et = execSync(`ps -o etimes= -p ${pid}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-                        const secs = parseInt(et, 10);
-                        if (Number.isFinite(secs) && secs >= 0) uptime = secs;
+                        const pidPath = `/proc/${pid}`;
+                        if (fs.existsSync(pidPath)) {
+                            // Use stat.ctimeMs which is creation time on Linux /proc
+                            const stats = fs.statSync(pidPath);
+                            uptime = Math.floor((Date.now() - stats.ctimeMs) / 1000);
+                        } else {
+                            // Fallback to exec if /proc missing (non-Linux?)
+                            const et = execSync(`ps -o etimes= -p ${pid}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+                            const secs = parseInt(et, 10);
+                            if (Number.isFinite(secs) && secs >= 0) uptime = secs;
+                        }
                     } catch (_) {
                         uptime = Math.round(process.uptime());
                     }
@@ -388,21 +498,59 @@ async function sendReport(options) {
             return;
         }
 
+    // Auto-detect color from status text if not explicitly overridden (or if default blue)
+    let headerColor = options.color || 'blue';
+    if (headerColor === 'blue') {
+        const statusUpper = (options.status || '').toUpperCase();
+        if (statusUpper.includes('[SUCCESS]') || statusUpper.includes('[成功]')) headerColor = 'green';
+        else if (statusUpper.includes('[FAILED]') || statusUpper.includes('[失败]')) headerColor = 'red';
+        else if (statusUpper.includes('[WARNING]') || statusUpper.includes('[警告]')) headerColor = 'orange';
+        else if (statusUpper.includes('[INNOVATE]') || statusUpper.includes('[创新]')) headerColor = 'purple';
+        else if (statusUpper.includes('[REPAIR]') || statusUpper.includes('[修复]')) headerColor = 'orange'; // Repair is often a fix/warning state
+        else if (statusUpper.includes('[OPTIMIZE]') || statusUpper.includes('[优化]')) headerColor = 'blue';
+        else if (statusUpper.includes('SUCCESS')) headerColor = 'green'; // Fallback for plain SUCCESS
+        else if (statusUpper.includes('FAILED')) headerColor = 'red'; // Fallback for plain FAILED
+        else if (statusUpper.includes('ERROR')) headerColor = 'red'; // Fallback for error messages
+    }
+
+    // --- ENHANCED HEADER EMOJI ---
+    const statusEmoji = {
+        "success": "✅",
+        "failed": "❌",
+        "running": "🔄",
+        "warning": "⚠️",
+        "info": "ℹ️"
+    };
+    
+    // Auto-detect emoji if status starts with a keyword
+    let emoji = "🧬";
+    const lowerStatus = (options.status || "").toLowerCase();
+    if (lowerStatus.includes("success") || lowerStatus.includes("complete")) emoji = statusEmoji.success;
+    else if (lowerStatus.includes("fail") || lowerStatus.includes("error")) emoji = statusEmoji.failed;
+    else if (lowerStatus.includes("run") || lowerStatus.includes("start")) emoji = statusEmoji.running;
+    else if (lowerStatus.includes("warn")) emoji = statusEmoji.warning;
+    // --- END ENHANCED HEADER ---
+
         if (options.dashboard && cardData) {
             // Dashboard mode: use cardData elements
             await sendCard({
                 target: target,
+                title: title, // Pass title for dashboard too
                 cardData: cardData,
-                note: footerStats // Keep footer
+                note: footerStats, // Keep footer
+                color: headerColor
             });
         } else {
             // Standard mode: text + dashboard snapshot
+            // Modify title in sendCard (cannot easily mod here without reconstructing object)
+            // But we can just pass the emoji in the title string
+            
             await sendCard({
                 target: target,
-                title: title,
+                title: `${emoji} ${title}`,
                 text: finalContent,
                 note: footerStats,
-                color: options.color || 'blue'
+                color: headerColor
             });
         }
         
@@ -439,8 +587,9 @@ if (require.main === module) {
 
     const options = program.opts();
     sendReport(options).catch(err => {
-        console.error(err);
-        process.exit(1);
+        console.error('[Wrapper] Report failed (non-fatal):', err.message);
+        // Don't fail the build/cycle just because reporting failed (e.g. permission issues)
+        process.exit(0);
     });
 }
 

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 function generateDashboardCard(stats, systemInfo, cycleInfo) {
-    const { total, successRate, intents, recent } = stats;
+    const { total, successRate, intents, recent, avgFiles, avgLines, avgRigor } = stats;
     const { proc, mem, uptime, load, disk, loopStatus } = systemInfo;
     const { id, duration } = cycleInfo;
 
@@ -57,7 +57,7 @@ function generateDashboardCard(stats, systemInfo, cycleInfo) {
 
     elements.push({ tag: 'hr' });
 
-    // 2. Evolution Stats (Fields)
+    // 2. Evolution Stats (Fields) - ENHANCED
     elements.push({
         tag: 'div',
         fields: [
@@ -76,6 +76,14 @@ function generateDashboardCard(stats, systemInfo, cycleInfo) {
             {
                 is_short: true,
                 text: { tag: 'lark_md', content: `**Last Cycle**: #${id} (${duration})` }
+            },
+            {
+                is_short: true,
+                text: { tag: 'lark_md', content: `**Avg Blast**: ${avgFiles}f / ${avgLines}L` }
+            },
+            {
+                is_short: true,
+                text: { tag: 'lark_md', content: `**Avg Rigor**: ${avgRigor || 'N/A'}` }
             }
         ]
     });

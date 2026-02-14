@@ -1,4 +1,4 @@
-const { fetchWithAuth } = require('../common/feishu-client.js');
+const { fetchWithAuth } = require('../feishu-common/index.js');
 
 // Security: scan for potential secrets before sending
 var SECRET_PATTERNS = [
@@ -18,8 +18,14 @@ function scanForSecrets(content) {
 }
 
 async function sendCard({ target, title, text, color, note, cardData }) {
+    // INNOVATION: Smart fallback for target (Cycle #3315)
+    // If target is missing, try to use the Master ID from environment.
+    if (!target && process.env.OPENCLAW_MASTER_ID) {
+        target = process.env.OPENCLAW_MASTER_ID;
+    }
+
     if (!target) {
-        throw new Error("Target ID is required");
+        throw new Error("Target ID is required (and OPENCLAW_MASTER_ID env var is not set)");
     }
 
     // Receive ID type detection (aligned with feishu-card/send.js)
