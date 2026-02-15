@@ -3,9 +3,15 @@
   "slug": "stock-market-pro",
   "displayName": "Stock Market Pro",
   "latest": {
-    "version": "1.1.0",
-    "publishedAt": 1769671465508,
-    "commit": "https://github.com/clawdbot/skills/commit/b4a079cf878e1a9937b92bf7e30151cbaa907ba1"
+    "version": "1.2.11",
+    "publishedAt": 1771174316303,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.1.0",
+      "publishedAt": 1769671465508,
+      "commit": "https://github.com/clawdbot/skills/commit/b4a079cf878e1a9937b92bf7e30151cbaa907ba1"
+    }
+  ]
 }
