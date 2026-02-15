@@ -1,7 +1,11 @@
 ---
 name: google-weather
 description: Google Weather API - accurate, real-time weather data. Get current conditions, temperature, humidity, wind, and forecasts. Powered by Google's Weather API for reliable, hyperlocal data updated every 15 minutes. Supports any location worldwide.
+version: 1.2.0
+author: Leo 🦁
 tags: [weather, google, forecast, temperature, real-time, current-conditions, climate, wind, humidity]
+metadata: {"clawdbot":{"emoji":"🌤️","requires":{"env":["GOOGLE_API_KEY"]},"primaryEnv":"GOOGLE_API_KEY","secondaryEnv":["GOOGLE_WEATHER_API_KEY","GOOGLE_MAPS_API_KEY"]}}
+allowed-tools: [exec]
 ---
 
 # Google Weather - Real-time Weather Data
