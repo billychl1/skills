@@ -1,13 +1,18 @@
 {
   "owner": "xbinkai",
   "slug": "billclaw",
-  "displayName": "BillClaw",
+  "displayName": "Billclaw",
   "latest": {
-    "version": "0.5.4",
-    "publishedAt": 1770782491169,
-    "commit": "https://github.com/openclaw/skills/commit/bc7fd3b2de82b236c62a30013ad1c1053744ec7a"
+    "version": "0.5.5",
+    "publishedAt": 1770983028494,
+    "commit": null
   },
   "history": [
+    {
+      "version": "0.5.4",
+      "publishedAt": 1770782491169,
+      "commit": "https://github.com/openclaw/skills/commit/bc7fd3b2de82b236c62a30013ad1c1053744ec7a"
+    },
     {
       "version": "0.5.3",
       "publishedAt": 1770781853103,
