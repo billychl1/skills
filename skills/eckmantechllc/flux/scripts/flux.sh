@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Flux CLI helper
+# Flux CLI helper — interact with Flux state engine
 
 FLUX_URL="${FLUX_URL:-http://localhost:3000}"
 
@@ -19,18 +19,6 @@ api_call() {
     fi
 }
 
-# Parse JSON helper (works without jq)
-parse_json() {
-    local json="$1"
-    local key="$2"
-    if command -v jq &> /dev/null; then
-        echo "$json" | jq -r "$key"
-    else
-        # Simple fallback for basic extraction
-        echo "$json" | grep -o "\"$key\":\"[^\"]*\"" | head -1 | cut -d'"' -f4
-    fi
-}
-
 # Format JSON output (pretty print if jq available)
 format_output() {
     if command -v jq &> /dev/null; then
@@ -40,7 +28,6 @@ format_output() {
     fi
 }
 
-# Commands
 case "${1:-}" in
     publish)
         stream="$2"
@@ -56,22 +43,17 @@ case "${1:-}" in
             exit 1
         fi
 
-        timestamp=$(date +%s)000  # Unix epoch milliseconds
-
-        payload=$(cat <<EOF
-{
-  "entity_id": "${entity_id}",
-  "properties": ${properties}
-}
-EOF
-)
+        timestamp=$(date +%s)000
 
         event=$(cat <<EOF
 {
   "stream": "${stream}",
   "source": "${source}",
   "timestamp": ${timestamp},
-  "payload": ${payload}
+  "payload": {
+    "entity_id": "${entity_id}",
+    "properties": ${properties}
+  }
 }
 EOF
 )
@@ -91,15 +73,8 @@ EOF
             exit 1
         fi
 
-        batch_payload=$(cat <<EOF
-{
-  "events": ${events}
-}
-EOF
-)
-
         echo "Publishing batch to Flux..."
-        api_call POST "/api/events/batch" "$batch_payload" | format_output
+        api_call POST "/api/events/batch" "{\"events\": ${events}}" | format_output
         ;;
 
     get)
@@ -107,9 +82,6 @@ EOF
 
         if [[ -z "$entity_id" ]]; then
             echo "Usage: flux.sh get ENTITY_ID"
-            echo ""
-            echo "Example:"
-            echo "  flux.sh get temp-sensor-01"
             exit 1
         fi
 
@@ -117,7 +89,36 @@ EOF
         ;;
 
     list)
-        api_call GET "/api/state/entities" | format_output
+        prefix="$2"
+        if [[ -n "$prefix" ]]; then
+            api_call GET "/api/state/entities?prefix=${prefix}" | format_output
+        else
+            api_call GET "/api/state/entities" | format_output
+        fi
+        ;;
+
+    delete)
+        entity_id="$2"
+
+        if [[ -z "$entity_id" ]]; then
+            echo "Usage: flux.sh delete ENTITY_ID"
+            echo "       flux.sh delete --prefix PREFIX"
+            echo "       flux.sh delete --namespace NAMESPACE"
+            exit 1
+        fi
+
+        if [[ "$entity_id" == "--prefix" ]]; then
+            prefix="$3"
+            echo "Batch deleting entities with prefix '${prefix}'..."
+            api_call POST "/api/state/entities/delete" "{\"prefix\":\"${prefix}\"}" | format_output
+        elif [[ "$entity_id" == "--namespace" ]]; then
+            ns="$3"
+            echo "Batch deleting entities in namespace '${ns}'..."
+            api_call POST "/api/state/entities/delete" "{\"namespace\":\"${ns}\"}" | format_output
+        else
+            echo "Deleting entity '${entity_id}'..."
+            api_call DELETE "/api/state/entities/${entity_id}" | format_output
+        fi
         ;;
 
     health)
@@ -146,8 +147,13 @@ EOF
         echo "  get ENTITY_ID"
         echo "      Query current state of entity"
         echo ""
-        echo "  list"
-        echo "      List all entities in world state"
+        echo "  list [PREFIX]"
+        echo "      List all entities (optionally filter by prefix)"
+        echo ""
+        echo "  delete ENTITY_ID"
+        echo "  delete --prefix PREFIX"
+        echo "  delete --namespace NAMESPACE"
+        echo "      Delete entity or batch delete by filter"
         echo ""
         echo "  batch EVENTS_JSON_ARRAY"
         echo "      Publish multiple events at once"
@@ -159,6 +165,9 @@ EOF
         echo "  flux.sh publish sensors agent-01 temp-01 '{\"temperature\":22.5}'"
         echo "  flux.sh get temp-01"
         echo "  flux.sh list"
+        echo "  flux.sh list host-"
+        echo "  flux.sh delete temp-01"
+        echo "  flux.sh delete --prefix loadtest-"
         echo "  flux.sh health"
         echo ""
         echo "Environment:"

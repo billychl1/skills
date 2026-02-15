@@ -9,110 +9,125 @@ Flux is a persistent, shared, event-sourced world state engine. Agents publish i
 
 ## Key Concepts
 
-- **Events**: Immutable observations (temperature readings, status changes, etc.)
-- **Entities**: State objects derived from events (sensors, devices, agents)
-- **Properties**: Key-value attributes of entities
-- **Streams**: Logical event namespaces (sensors, agents, system)
+- **Events**: Immutable observations (temperature readings, status changes, agent actions)
+- **Entities**: State objects derived from events (sensors, devices, agents, tasks)
+- **Properties**: Key-value attributes of entities (merge on update, last-write-wins)
+- **Streams**: Logical event namespaces (sensors, system, loadtest)
 
 ## Prerequisites
 
 **Flux Instance:**
 - Default: `http://localhost:3000` (local instance)
-- Can override with: `export FLUX_URL=https://your-flux-url.com`
+- Override with: `export FLUX_URL=https://your-flux-url.com`
+- Public sandbox: `https://flux.eckman-tech.com`
 
 **Options:**
-1. Run Flux locally (see [Flux repo](https://github.com/EckmanTechLLC/flux))
-2. Use public test instance: `https://deutschland-jackie-substantially-pee.trycloudflare.com`
-3. Deploy your own Flux instance
-
-No authentication required (current setup).
-
-## Testing
-
-Verify Flux connection:
-```bash
-./scripts/flux.sh health
-```
+1. Run Flux locally — see [Flux repo](https://github.com/EckmanTechLLC/flux)
+2. Use the public sandbox instance
+3. Deploy your own instance (Docker: Rust + NATS JetStream)
 
 ## Scripts
 
-Use the provided bash script in the `scripts/` directory:
-- `flux.sh` - Main CLI tool
+Use the provided CLI in `scripts/`:
 
-## Common Operations
-
-### Publish Event
 ```bash
-./scripts/flux.sh publish <stream> <source> <entity_id> <properties_json>
-
-# Example: Publish sensor reading
-./scripts/flux.sh publish sensors agent-01 temp-sensor-01 '{"temperature":22.5,"unit":"celsius"}'
+./scripts/flux.sh health          # Test connection
+./scripts/flux.sh list            # List all entities
+./scripts/flux.sh list host-      # Filter by prefix
+./scripts/flux.sh get sensor-01   # Get entity state
+./scripts/flux.sh publish sensors my-agent sensor-01 '{"temp":22.5}'
+./scripts/flux.sh delete sensor-01                   # Delete one
+./scripts/flux.sh delete --prefix loadtest-          # Batch delete
+./scripts/flux.sh delete --namespace sandbox         # Delete namespace
 ```
 
-### Query Entity State
-```bash
-./scripts/flux.sh get <entity_id>
+## Entity Conventions
 
-# Example: Get current sensor state
-./scripts/flux.sh get temp-sensor-01
+**Naming:** Use descriptive prefixes for grouping:
+- `host-*` — servers/VMs (host-web-01)
+- `sensor-*` — physical sensors (sensor-temp-01)
+- `agent-*` — AI agents (agent-arc-01)
+- `task-*` — work items (task-build-123)
+- Delimiters: `-` for flat IDs, `:` for typed IDs (agent:manager), `/` for namespaced (matt/sensor-01)
+
+**Streams:** Logical categories for events:
+- `system` — infrastructure, status updates
+- `sensors` — device readings, IoT data
+- `loadtest` — test/synthetic data
+
+**Properties:** Flat key-value pairs. Common patterns:
+- `status` — entity health (online, healthy, warning, error)
+- `activity` — what it's doing right now
+- `command` + `cmd_id` — bidirectional control (change cmd_id to trigger action)
+
+## Common Patterns
+
+### Agent Status Publishing
+```bash
+# Publish your agent's status to the world
+flux.sh publish system my-agent my-agent-01 '{"status":"online","activity":"monitoring"}'
 ```
 
-### List All Entities
+### Bidirectional Device Control
 ```bash
-./scripts/flux.sh list
-
-# Shows all entities in current world state
+# Send command to a device (device watches for cmd_id changes)
+flux.sh publish sensors controller device-01 '{"command":"set_mode","mode":"active","cmd_id":"cmd-001"}'
 ```
-
-### Batch Publish Events
-```bash
-./scripts/flux.sh batch '[
-  {"stream":"sensors","source":"agent-01","payload":{"entity_id":"sensor-01","properties":{"temp":22}}},
-  {"stream":"sensors","source":"agent-01","payload":{"entity_id":"sensor-02","properties":{"temp":23}}}
-]'
-```
-
-## Use Cases
 
 ### Multi-Agent Coordination
-Agents publish observations to shared entities:
 ```bash
-# Agent A observes temperature
-flux.sh publish sensors agent-a room-101 '{"temperature":22.5}'
+# Agent A writes a message
+flux.sh publish system agent-a agent-a-01 '{"message":"found anomaly in sector 7","message_to":"agent-b"}'
 
-# Agent B queries current state
-flux.sh get room-101
-# Returns: {"temperature":22.5,...}
+# Agent B reads it
+flux.sh get agent-a-01
 ```
 
-### Status Tracking
-Track service/system state:
+### Monitoring & Alerting
 ```bash
-# Publish status change
-flux.sh publish system monitor api-gateway '{"status":"healthy","uptime":3600}'
-
-# Query current status
-flux.sh get api-gateway
+# List all entities, pipe through jq for analysis
+flux.sh list | jq '[.[] | {id, status: .properties.status}]'
 ```
 
-### Event Sourcing
-All state changes are event-sourced:
-- Events are immutable (never deleted/modified)
-- State derived from event history
-- Can replay/audit full history
+## API Reference
 
-## API Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/events | Publish single event |
+| POST | /api/events/batch | Publish multiple events |
+| GET | /api/state/entities | List all entities |
+| GET | /api/state/entities?prefix=X | Filter by prefix |
+| GET | /api/state/entities/:id | Get single entity |
+| DELETE | /api/state/entities/:id | Delete single entity |
+| POST | /api/state/entities/delete | Batch delete (prefix/namespace/ids) |
+| WS | /api/ws | Subscribe to real-time updates |
 
-- `POST /api/events` - Publish single event
-- `POST /api/events/batch` - Publish multiple events
-- `GET /api/state/entities` - List all entities
-- `GET /api/state/entities/:id` - Get specific entity
+## WebSocket Subscriptions
 
-See `references/api.md` for full API documentation.
+Connect to `/api/ws` for real-time state updates:
+
+```json
+// Subscribe to one entity
+{"type": "subscribe", "entity_id": "sensor-01"}
+
+// Subscribe to ALL entities
+{"type": "subscribe", "entity_id": "*"}
+
+// Receive updates
+{"type": "state_update", "entity_id": "sensor-01", "property": "temp", "value": 22.5, "timestamp": "..."}
+
+// Receive metrics (every 2s)
+{"type": "metrics_update", "entities": {"total": 15}, "events": {"total": 50000, "rate_per_second": 120.5}, ...}
+
+// Entity deleted notification
+{"type": "entity_deleted", "entity_id": "sensor-01", "timestamp": "..."}
+```
 
 ## Notes
 
 - Events auto-generate UUIDs (no need to provide eventId)
-- Properties merge on updates (last write wins per property)
-- State persists in Flux (survives restarts via NATS JetStream)
+- Properties merge on updates (last-write-wins per property)
+- State persists across restarts (NATS JetStream + periodic snapshots)
 - Timestamp defaults to current time if not provided
+- Auth optional: `FLUX_AUTH_ENABLED=true` enables namespace-scoped bearer tokens
+- Namespaced entities use format: `namespace/entity-id`
