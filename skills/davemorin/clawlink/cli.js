@@ -2,12 +2,14 @@
 /**
  * ClawLink CLI
  * Encrypted Clawbot-to-Clawbot messaging via relay
+ * 
+ * SECURITY: Uses spawnSync with argument arrays to prevent shell injection
  */
 
 import { existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { spawn, execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -20,11 +22,24 @@ const FRIENDS_FILE = join(DATA_DIR, 'friends.json');
 const args = process.argv.slice(2);
 const command = args[0];
 
+/**
+ * Safely run a Node script with arguments (no shell interpolation)
+ */
+function runScript(scriptName, scriptArgs = []) {
+  const result = spawnSync('node', [join(__dirname, scriptName), ...scriptArgs], {
+    stdio: 'inherit',
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    process.exit(result.status || 1);
+  }
+}
+
 async function main() {
   switch (command) {
     case 'setup':
       const name = args[1] || 'ClawLink User';
-      execSync(`node ${join(__dirname, 'scripts/setup.js')} --name="${name}"`, { stdio: 'inherit' });
+      runScript('scripts/setup.js', ['--name', name]);
       break;
 
     case 'link':
@@ -49,12 +64,12 @@ async function main() {
         console.log('Usage: clawlink add <friend-link>');
         process.exit(1);
       }
-      execSync(`node ${join(__dirname, 'scripts/friends.js')} add "${args[1]}"`, { stdio: 'inherit' });
+      runScript('scripts/friends.js', ['add', args[1]]);
       break;
 
     case 'friends':
       // List friends
-      execSync(`node ${join(__dirname, 'scripts/friends.js')} list`, { stdio: 'inherit' });
+      runScript('scripts/friends.js', ['list']);
       break;
 
     case 'send':
@@ -65,18 +80,17 @@ async function main() {
       }
       const friend = args[1];
       const message = args.slice(2).join(' ');
-      execSync(`node ${join(__dirname, 'scripts/send.js')} "${friend}" "${message}"`, { stdio: 'inherit' });
+      runScript('scripts/send.js', [friend, message]);
       break;
 
     case 'poll':
       // Check for messages
-      const pollArgs = args.slice(1).join(' ');
-      execSync(`node ${join(__dirname, 'scripts/poll.js')} ${pollArgs}`, { stdio: 'inherit' });
+      runScript('scripts/poll.js', args.slice(1));
       break;
 
     case 'inbox':
       // Alias for poll
-      execSync(`node ${join(__dirname, 'scripts/poll.js')}`, { stdio: 'inherit' });
+      runScript('scripts/poll.js', []);
       break;
 
     case 'status':
