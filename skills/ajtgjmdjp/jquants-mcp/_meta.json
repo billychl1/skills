@@ -1,11 +1,17 @@
 {
   "owner": "ajtgjmdjp",
   "slug": "jquants-mcp",
-  "displayName": "J-Quants MCP",
+  "displayName": "Jquants Mcp",
   "latest": {
-    "version": "0.1.0",
-    "publishedAt": 1771088719053,
-    "commit": "https://github.com/openclaw/skills/commit/a1a0443035936e106872e99af0c0456467f5bc22"
+    "version": "0.1.2",
+    "publishedAt": 1771175667043,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "0.1.0",
+      "publishedAt": 1771088719053,
+      "commit": "https://github.com/openclaw/skills/commit/a1a0443035936e106872e99af0c0456467f5bc22"
+    }
+  ]
 }
