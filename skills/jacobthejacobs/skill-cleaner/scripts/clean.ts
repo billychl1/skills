@@ -3,22 +3,13 @@ import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
-import { scanDirectoryWithSummary } from "../../../src/security/skill-scanner.ts";
+import { scanDirectoryWithSummary } from "./scanner-logic.ts";
 
-// Try to load .env if it exists in ~/.openclaw or OPENCLAW_STATE_DIR
-const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
-async function loadEnv() {
-    try {
-        const envPath = path.join(stateDir, ".env");
-        const content = await fs.readFile(envPath, "utf-8");
-        for (const line of content.split("\n")) {
-            const trimmed = line.trim();
-            if (trimmed.startsWith("VIRUSTOTAL_API_KEY=")) {
-                const val = trimmed.slice("VIRUSTOTAL_API_KEY=".length).trim().replace(/^["']|["']$/g, "");
-                process.env.VIRUSTOTAL_API_KEY = val;
-            }
-        }
-    } catch (err) {}
+// No more direct .env loading. We expect standard process.env.
+// This resolves the "reading the whole .env" privacy flag.
+if (!process.env.VIRUSTOTAL_API_KEY) {
+    // If not in process.env, the Gateway/Registry handles provisioning 
+    // from ~/.openclaw/.env based on 'requires.env' in SKILL.md
 }
 
 // Heuristic to find workspace root
@@ -68,13 +59,23 @@ type TrustMetadata = {
     verifiedAt?: string;
 };
 
+function sanitizeMetadata(metadata: TrustMetadata): TrustMetadata {
+    const sanitize = (s: string) => s.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+    return {
+        source: sanitize(metadata.source),
+        vtLink: metadata.vtLink ? sanitize(metadata.vtLink) : undefined,
+        verifiedAt: metadata.verifiedAt ? sanitize(metadata.verifiedAt) : undefined
+    };
+}
+
 async function trustViaBridge(hash: string, metadata: TrustMetadata) {
+    const sanitized = sanitizeMetadata(metadata);
     const args = [
         "gateway",
         "call",
         "security.trustSkill",
         "--params",
-        JSON.stringify({ hash, ...metadata }),
+        JSON.stringify({ hash, ...sanitized }),
         "--json"
     ];
     
@@ -134,8 +135,6 @@ async function run() {
             allFindings.push(...findings);
         } catch (err) { }
     }
-
-    await loadEnv();
 
     if (allFindings.length === 0) {
         console.log("✅ No suspicious patterns found in skills. Nothing to clean.");
