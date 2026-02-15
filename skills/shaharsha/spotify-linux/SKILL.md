@@ -1,8 +1,11 @@
 ---
-name: spogo-linux
+name: spotify-linux
+version: 1.1.0
 description: Spotify CLI for headless Linux servers. Control Spotify playback via terminal using cookie auth (no OAuth callback needed). Perfect for remote servers without localhost access.
+author: Leo 🦁
 homepage: https://github.com/steipete/spogo
-metadata: {"openclaw":{"emoji":"🎵","requires":{"anyBins":["spogo"]},"install":[{"id":"go","kind":"shell","command":"go install github.com/steipete/spogo/cmd/spogo@latest","bins":["spogo"],"label":"Install spogo (go)"}]}}
+metadata: {"openclaw":{"emoji":"🎵","requires":{"anyBins":["spogo"]},"install":[{"id":"go","kind":"shell","command":"go install github.com/steipete/spogo/cmd/spogo@latest","bins":["spogo"],"label":"Install spogo (go)"}],"notes":"Cookies (sp_dc, sp_t) are stored locally in ~/.config/spogo/cookies/ and sent only to Spotify APIs. Browser automation fallback is optional and only used to start a playback session when no active device exists."}}
+allowed-tools: [exec]
 ---
 
 # Spogo - Spotify CLI for Linux Servers
@@ -164,6 +167,13 @@ Cookies expired. Get fresh cookies from browser and update the JSON file.
 
 ### Commands work but no sound
 Check `spogo device list` - playback might be on wrong device. Use `spogo device set "DEVICE_ID"` to switch.
+
+## Security & Privacy
+
+- **Cookie handling**: `sp_dc` and `sp_t` are stored locally in `~/.config/spogo/cookies/` — treat them as secrets, never log or share them
+- **Network access**: spogo only communicates with Spotify APIs (`api.spotify.com`, `open.spotify.com`)
+- **Browser fallback**: Optional — only used when no active Spotify device exists. Uses the agent's browser profile to open `open.spotify.com` and click Play. This does NOT extract additional cookies or access other browser state
+- **Install source**: `go install` from the official [steipete/spogo](https://github.com/steipete/spogo) GitHub repository — open source, auditable
 
 ## Notes
 
