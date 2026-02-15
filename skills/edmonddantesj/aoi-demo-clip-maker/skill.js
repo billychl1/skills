@@ -64,16 +64,8 @@ function devices() {
   process.exit(0);
 }
 
-function record({ out, duration, fps, screen, pixel }) {
-  if (!out) die('--out required');
-  if (out.includes('/') || out.includes('..')) die('out must be a filename (no paths)');
-
-  const dur = String(duration || '15');
-  const fr = String(fps || '30');
-  const device = screen || 'Capture screen 0';
-  const pix = pixel || 'uyvy422';
-
-  runAllowed('ffmpeg', [
+function tryRecord({ out, dur, fr, device, pix }) {
+  const args = [
     '-y',
     '-f', 'avfoundation',
     '-framerate', fr,
@@ -81,7 +73,38 @@ function record({ out, duration, fps, screen, pixel }) {
     '-i', device,
     '-t', dur,
     out,
-  ]);
+  ];
+  const res = spawnSync('ffmpeg', args, { encoding: 'utf8' });
+  if (res.status === 0) return { ok: true, pix };
+  const stderr = (res.stderr || '').slice(-4000);
+  return { ok: false, pix, code: res.status, stderr };
+}
+
+function record({ out, duration, fps, screen, pixel }) {
+  if (!out) die('--out required');
+  if (out.includes('/') || out.includes('..')) die('out must be a filename (no paths)');
+
+  const dur = String(duration || '15');
+  const fr = String(fps || '30');
+  const device = screen || 'Capture screen 0';
+
+  // Pixel-format fallback order for macOS avfoundation screen capture.
+  // uyvy422 is common; nv12 also appears on some systems.
+  const fallback = ['uyvy422', 'nv12', 'yuyv422', '0rgb', 'bgr0'];
+  const pixels = pixel ? [pixel, ...fallback.filter((p) => p !== pixel)] : fallback;
+
+  let lastErr = null;
+  for (const pix of pixels) {
+    const r = tryRecord({ out, dur, fr, device, pix });
+    if (r.ok) {
+      console.error(`[aoi-clip] record ok (pixel_format=${pix})`);
+      return;
+    }
+    lastErr = r;
+    console.error(`[aoi-clip] record failed (pixel_format=${pix}, code=${r.code})`);
+  }
+
+  die(`record failed for all pixel formats. Last error (pix=${lastErr?.pix}):\n${lastErr?.stderr || ''}`);
 }
 
 function crop({ inFile, out, top }) {

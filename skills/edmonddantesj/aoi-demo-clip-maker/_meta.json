@@ -3,9 +3,15 @@
   "slug": "aoi-demo-clip-maker",
   "displayName": "AOI Demo Clip Maker (macOS)",
   "latest": {
-    "version": "0.1.0",
-    "publishedAt": 1771125593505,
-    "commit": "https://github.com/openclaw/skills/commit/11a4662f53961529481879d319e5423c62ccf80b"
+    "version": "0.1.1",
+    "publishedAt": 1771125988349,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "0.1.0",
+      "publishedAt": 1771125593505,
+      "commit": "https://github.com/openclaw/skills/commit/11a4662f53961529481879d319e5423c62ccf80b"
+    }
+  ]
 }

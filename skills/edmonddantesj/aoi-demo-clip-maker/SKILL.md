@@ -31,7 +31,12 @@ aoi-clip devices
 
 ### 2) Record (screen capture)
 ```bash
-aoi-clip record --out tempo_demo_raw.mp4 --duration 15 --fps 30 --screen "Capture screen 0" --pixel uyvy422
+# pixel_format auto-fallback is enabled by default
+# (tries: uyvy422 → nv12 → yuyv422 → 0rgb → bgr0)
+aoi-clip record --out tempo_demo_raw.mp4 --duration 15 --fps 30 --screen "Capture screen 0"
+
+# optionally force a specific pixel format
+# aoi-clip record --out tempo_demo_raw.mp4 --duration 15 --fps 30 --screen "Capture screen 0" --pixel uyvy422
 ```
 
 ### 3) Crop top bar
