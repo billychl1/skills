@@ -1,0 +1,11 @@
+{
+  "owner": "geeklord",
+  "slug": "runware-image",
+  "displayName": "Generate images using Runware API",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1771162798610,
+    "commit": null
+  },
+  "history": []
+}
