@@ -1,9 +1,9 @@
 ---
-slug: "validation-rules-builder"
-display_name: "Validation Rules Builder"
+name: "validation-rules-builder"
 description: "Build validation rules for construction data. Create RegEx and logic-based validation for BIM elements, cost codes, and schedule data."
+homepage: "https://datadrivenconstruction.io"
+metadata: {"openclaw": {"emoji": "✔️", "os": ["darwin", "linux", "win32"], "homepage": "https://datadrivenconstruction.io", "requires": {"bins": ["python3"]}}}
 ---
-
 # Validation Rules Builder
 
 ## Business Case
