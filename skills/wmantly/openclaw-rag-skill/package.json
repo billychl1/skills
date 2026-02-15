@@ -1,8 +1,8 @@
 {
   "name": "rag-openclaw",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "RAG Knowledge System for OpenClaw - Semantic search across chat history, code, docs, and skills with automatic memory retrieval",
-  "homepage": "http://git.theta42.com/nova/openclaw-rag-skill",
+  "homepage": "https://openclaw-rag-skill.projects.theta42.com",
   "author": {
     "name": "Nova AI",
     "email": "nova@vm42.us"

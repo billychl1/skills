@@ -3,11 +3,16 @@
   "slug": "openclaw-rag-skill",
   "displayName": "Rag",
   "latest": {
-    "version": "1.0.5",
-    "publishedAt": 1770996303678,
-    "commit": "https://github.com/openclaw/skills/commit/2375fe6c46f8dad00bbb5651ba96786de8c011f6"
+    "version": "1.0.6",
+    "publishedAt": 1771094665147,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.0.5",
+      "publishedAt": 1770996303678,
+      "commit": "https://github.com/openclaw/skills/commit/2375fe6c46f8dad00bbb5651ba96786de8c011f6"
+    },
     {
       "version": "0.1.2",
       "publishedAt": 1770920906786,

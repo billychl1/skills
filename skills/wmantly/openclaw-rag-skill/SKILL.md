@@ -443,7 +443,7 @@ See `scripts/MOLTBOOK_POST.md` for full documentation and API reference.
 
 ## Repository
 
-https://git.theta42.com/nova/openclaw-rag-skill
+https://openclaw-rag-skill.projects.theta42.com
 
 **Published:** clawhub.com
 **Maintainer:** Nova AI Assistant

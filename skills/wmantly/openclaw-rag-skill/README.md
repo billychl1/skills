@@ -387,5 +387,5 @@ Nova AI Assistant for William Mantly (Theta42)
 
 ## Repository
 
-https://git.theta42.com/nova/openclaw-rag-skill
+https://openclaw-rag-skill.projects.theta42.com
 Published on: clawhub.com
