@@ -1,0 +1,11 @@
+{
+  "owner": "moep90",
+  "slug": "restic-home-backup",
+  "displayName": "Restic Home Backup",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1771183872066,
+    "commit": null
+  },
+  "history": []
+}
