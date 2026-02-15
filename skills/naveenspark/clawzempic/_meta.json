@@ -3,9 +3,15 @@
   "slug": "clawzempic",
   "displayName": "Clawzempic",
   "latest": {
-    "version": "2.3.4",
-    "publishedAt": 1771032367106,
-    "commit": "https://github.com/openclaw/skills/commit/47087c20042d05f832028ba2d95a5b66fc6d27f8"
+    "version": "2.3.5",
+    "publishedAt": 1771140312212,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "2.3.4",
+      "publishedAt": 1771032367106,
+      "commit": "https://github.com/openclaw/skills/commit/47087c20042d05f832028ba2d95a5b66fc6d27f8"
+    }
+  ]
 }
