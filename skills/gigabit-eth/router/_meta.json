@@ -1,0 +1,11 @@
+{
+  "owner": "gigabit-eth",
+  "slug": "router",
+  "displayName": "SwitchBoard",
+  "latest": {
+    "version": "1.0.2",
+    "publishedAt": 1771229013916,
+    "commit": null
+  },
+  "history": []
+}
