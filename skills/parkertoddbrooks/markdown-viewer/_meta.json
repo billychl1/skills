@@ -1,13 +1,18 @@
 {
   "owner": "parkertoddbrooks",
   "slug": "markdown-viewer",
-  "displayName": "Live Markdown Viewer",
+  "displayName": "Markdown Viewer",
   "latest": {
-    "version": "1.0.6",
-    "publishedAt": 1771202993460,
-    "commit": "https://github.com/openclaw/skills/commit/796156d2d8c569d770f5d14f2db9863397d95679"
+    "version": "1.0.9",
+    "publishedAt": 1771207329250,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.0.6",
+      "publishedAt": 1771202993460,
+      "commit": "https://github.com/openclaw/skills/commit/796156d2d8c569d770f5d14f2db9863397d95679"
+    },
     {
       "version": "1.0.5",
       "publishedAt": 1771202828657,

@@ -27,6 +27,9 @@ metadata:
 
 Live markdown viewer for AI pair-editing. When you collaborate, the updates render instantly. Works with any AI agent and web browser.
 
+GitHub: [wipcomputer/wip-markdown-viewer](https://github.com/wipcomputer/wip-markdown-viewer)
+npm: [@wipcomputer/markdown-viewer](https://www.npmjs.com/package/@wipcomputer/markdown-viewer)
+
 ## Install
 
 ```bash
@@ -34,8 +37,6 @@ npm install -g @wipcomputer/markdown-viewer
 ```
 
 This installs the `mdview` command globally. Zero runtime dependencies. Pure Node.js.
-
-Source: [github.com/wipcomputer/wip-markdown-viewer](https://github.com/wipcomputer/wip-markdown-viewer)
 
 ## Quick start
 
@@ -70,7 +71,7 @@ Open multiple tabs to work on multiple documents at once.
 ## Security
 
 - Server binds to `127.0.0.1` only. It is not accessible from other machines.
-- The `/view?path=` parameter reads files from your local filesystem. This is expected behavior for a local viewer. Do not expose the port to untrusted networks.
+- The `/view?path=` parameter reads files from your local filesystem. Use `--root <dir>` to restrict access to a specific directory tree. Recommended for shared environments.
 - Zero npm dependencies. No supply chain risk beyond Node.js itself.
 
 ## Features
