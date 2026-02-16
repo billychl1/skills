@@ -1,0 +1,11 @@
+{
+  "owner": "saschaspoonbill",
+  "slug": "openai-image-gen-fixed",
+  "displayName": "Openai Image Gen",
+  "latest": {
+    "version": "1.0.2",
+    "publishedAt": 1771272835492,
+    "commit": null
+  },
+  "history": []
+}
