@@ -3,9 +3,15 @@
   "slug": "vibe-clawing",
   "displayName": "Vibe Clawing",
   "latest": {
-    "version": "1.0.0",
-    "publishedAt": 1770936655580,
-    "commit": "https://github.com/openclaw/skills/commit/aa341c64a95acaab1c4b498aa4ae619123c72bcc"
+    "version": "1.0.1",
+    "publishedAt": 1771184112741,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.0.0",
+      "publishedAt": 1770936655580,
+      "commit": "https://github.com/openclaw/skills/commit/aa341c64a95acaab1c4b498aa4ae619123c72bcc"
+    }
+  ]
 }

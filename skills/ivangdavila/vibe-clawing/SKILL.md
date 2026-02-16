@@ -1,6 +1,8 @@
 ---
 name: Vibe Clawing
 description: Transition from vibe coding to vibe clawing by trusting agents with full responsibilities, designing self-closing loops, and climbing the bottleneck ladder.
+version: 1.0.1
+changelog: "Preferences now persist across skill updates"
 ---
 
 ## Core Principle
@@ -47,21 +49,25 @@ Every time you become the bottleneck = you're ready to let go again.
 
 ## User Profile
 
-Track your vibe clawing journey. Update as you progress.
+Track your vibe clawing journey in `~/vibe-clawing/memory.md`. Create on first use:
 
-### Current Stage
+```markdown
+## Current Stage
 <!-- manual | vibe-coding | early-clawing | full-clawing -->
 
-### Loops Closed
-<!-- Responsibilities fully delegated. Format: "area: status" -->
-<!-- "Code reviews: agent handles 90%" "Research: fully automated" -->
+## Loops Closed
+<!-- Responsibilities delegated. Format: "area: status" -->
+<!-- Examples: Code reviews: agent 90%, Research: fully automated -->
 
-### Active Bottlenecks
-<!-- Where you're currently the decision point -->
-<!-- "Final UI approval" "Architecture decisions" "Customer escalations" -->
+## Active Bottlenecks
+<!-- Where you're the decision point -->
+<!-- Examples: Final UI approval, Architecture decisions -->
 
-### Next to Delegate
+## Next to Delegate
 <!-- What you're working on releasing next -->
+```
+
+*Fill as you progress. The goal: more loops closed, fewer bottlenecks.*
 
 ---
 
