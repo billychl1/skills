@@ -1,6 +1,6 @@
 ---
 name: agent-orchestrator
-version: 1.0.3
+version: 1.0.5
 author: molter-white
 description: Multi-agent orchestration with 5 proven patterns - Work Crew, Supervisor, Pipeline, Council, and Auto-Routing
 license: MIT

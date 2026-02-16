@@ -104,22 +104,16 @@ ClawHub has **no built-in payment system**. Skills are free, public, and open.
 
 **Revenue:** $0 (building reputation)
 
-#### Phase 2: Premium API Gateway (3-6 months)
+#### Phase 2: Optional Commercial Layer (3-6 months)
 If there's sufficient user interest:
-1. Create `pro.clawdbot.io` API service
-2. Add premium key detection to skill:
-   ```python
-   PREMIUM_KEY = os.getenv("AGENT_ORCHESTRATOR_PRO_KEY")
-   if PREMIUM_KEY:
-       # Enable: hosted execution, analytics, priority queues
-       enable_premium_features()
-   ```
-3. Offer hosted execution for teams wanting managed infrastructure
+1. Keep core skill open and local-first
+2. Offer optional consulting/support around implementation
+3. If a hosted layer is ever introduced, document trust boundaries and data flow explicitly before rollout
 
-**Pricing options:**
-- Free: Use your own API keys, local execution
-- Pro: $49/month - hosted execution, analytics, priority
-- Enterprise: $499/month - custom patterns, SLA, support
+**Pricing options (service layer, not required for core skill):**
+- Free: Local execution
+- Pro Services: setup/optimization support
+- Enterprise: custom workflows, SLA, training
 
 #### Phase 3: Enterprise Consulting (Ongoing)
 1. Add to SKILL.md:

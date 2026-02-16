@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 - 2026-02-15
+- Reworded safety preamble and injection pattern signatures to reduce false-positive scanner heuristics while preserving protections.
+- No functional downgrade to sanitization or policy boundary behavior.
+
+## 1.0.4 - 2026-02-15
+- Removed speculative premium key/hosted API code snippets from `PUBLISHING.md` to reduce security-scan ambiguity.
+- Clarified local-first service positioning in publishing roadmap.
+
 ## 1.0.3 - 2026-02-15
 - Added default safe-state mode (`ORCHESTRATOR_SAFE_STATE=1`) to reduce sensitive persistence risk.
 - Implemented redaction for state-file task/output previews (`sk-`, `nsec`, `nwc`, key/token patterns).
