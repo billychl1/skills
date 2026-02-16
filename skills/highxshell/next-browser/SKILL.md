@@ -25,8 +25,18 @@ Base URL: `https://app.nextbrowser.com/api/v1`
 All requests need header: `Authorization: x-api-key <apiKey>`
 
 ---
+## 1. Credentials Manager
 
-## 1. Profiles
+The Credentials Manager securely stores and reuses authentication data across browser runs and autonomous tasks.
+
+```bash
+# List credentials
+curl "https://app.nextbrowser.com/api/v1/users/credentials" -H "Authorization: x-api-key $API_KEY"
+```
+
+---
+
+## 2. Profiles
 
 Profiles persist cookies and login state across browser sessions. Create one, log into your accounts in the browser, and reuse it.
 
@@ -39,24 +49,13 @@ curl -X POST "https://app.nextbrowser.com/api/v1/browser/profiles" \
   -H "Authorization: x-api-key $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "<profile-name>", "browser_settings": {"os_type": "<os-type>", "browser_type": "chrome"},
-   "proxy_settings":{"protocol":"<http|https|socks5>","country":"<iso-2-country-code>","mode":"built-in"}}'
+   "proxy_settings":{"protocol":"<http|https|socks5>","country":"<iso-2-country-code>","mode":"built-in"},
+   "credentials": ["<credential-id>"]}'
 
 # Delete profile
 curl -X DELETE "https://app.nextbrowser.com/api/v1/browser/profiles/<profile-id>" \
   -H "Authorization: x-api-key $API_KEY"
 ```
-
----
-## 2. Credentials Manager
-
-The Credentials Manager securely stores and reuses authentication data across browser runs and autonomous tasks.
-
-```bash
-# List credentials
-curl "https://app.nextbrowser.com/api/v1/users/credentials" -H "Authorization: x-api-key $API_KEY"
-```
-
----
 
 ---
 ## 3. Locations
@@ -137,7 +136,6 @@ viewed, 8 upvotes, and 3 comments."\
 "'",
     "mode": "fast",
     "profile_id": "<profile-id>",
-    "credentials": ["<credential-id>"],
     "skip_plan_approval": true
   }'
 ```
@@ -171,7 +169,6 @@ Status values: `processing`, `finished`, `failed`
 | `task_description` | Your prompt (required) |
 | `mode` | Always use `fast` |
 | `profile_id` | Use a profile for auth |
-| `credentials` | List of credential IDs for login |
 | `skip_plan_approval` | Always use `true`|
 
 ---
