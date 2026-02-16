@@ -1,0 +1,61 @@
+{
+  "id": "memory-qdrant",
+  "kind": "memory",
+  "name": "Memory (Qdrant)",
+  "version": "1.0.0",
+  "description": "本地语义记忆系统（Qdrant + Transformers.js，完全本地运行）",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "qdrantUrl": {
+        "type": "string",
+        "description": "Qdrant 服务地址（留空使用内存模式）"
+      },
+      "collectionName": {
+        "type": "string",
+        "default": "openclaw_memories"
+      },
+      "autoCapture": {
+        "type": "boolean",
+        "default": false
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "default": true
+      },
+      "captureMaxChars": {
+        "type": "number",
+        "minimum": 100,
+        "maximum": 10000,
+        "default": 500
+      }
+    }
+  },
+  "uiHints": {
+    "qdrantUrl": {
+      "label": "Qdrant URL",
+      "placeholder": "留空使用内存模式（零配置）",
+      "advanced": true,
+      "help": "外部 Qdrant 服务地址，留空则使用内存存储"
+    },
+    "collectionName": {
+      "label": "Collection Name",
+      "placeholder": "openclaw_memories",
+      "advanced": true
+    },
+    "autoCapture": {
+      "label": "自动捕获",
+      "help": "在对话结束后自动保存重要信息"
+    },
+    "autoRecall": {
+      "label": "自动召回",
+      "help": "在对话开始前自动注入相关记忆"
+    },
+    "captureMaxChars": {
+      "label": "捕获最大长度",
+      "help": "单条记忆的最大字符数",
+      "advanced": true
+    }
+  }
+}

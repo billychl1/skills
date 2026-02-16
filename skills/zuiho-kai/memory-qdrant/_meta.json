@@ -1,0 +1,11 @@
+{
+  "owner": "zuiho-kai",
+  "slug": "memory-qdrant",
+  "displayName": "Memory Qdrant",
+  "latest": {
+    "version": "1.0.2",
+    "publishedAt": 1771245920970,
+    "commit": null
+  },
+  "history": []
+}
