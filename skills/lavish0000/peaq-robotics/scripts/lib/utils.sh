@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+PEAQ_ROS2_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 fatal() {
   echo "${SCRIPT_NAME}: $*" >&2
   exit 2
@@ -33,12 +35,83 @@ get_hostname() {
   hostname 2>/dev/null || uname -n 2>/dev/null || echo ""
 }
 
-yaml_escape() {
-  # Escape single quotes for YAML single-quoted scalars.
-  printf "%s" "$1" | sed "s/'/''/g"
+resolve_realpath() {
+  python3 - <<'PY' "$1"
+import os
+import sys
+
+path = os.path.expanduser(sys.argv[1])
+print(os.path.realpath(path))
+PY
 }
 
-json_compact_or_raw() {
+path_is_within() {
+  local candidate="$1"
+  local root="$2"
+  local root_prefix="${root%/}/"
+  [[ "$candidate" == "$root" || "$candidate" == "$root_prefix"* ]]
+}
+
+resolve_skill_root() {
+  if [[ -n "${SCRIPT_DIR:-}" ]]; then
+    dirname "$SCRIPT_DIR"
+    return
+  fi
+  dirname "$(dirname "$PEAQ_ROS2_UTILS_DIR")"
+}
+
+validate_json_file_arg() {
+  local raw_path="$1"
+  local real_path size max_size
+  local -a allowed_roots=()
+  local workspace skill_root root extra_root root_real allowed=0
+
+  real_path="$(resolve_realpath "$raw_path")"
+  [[ -f "$real_path" ]] || fatal "JSON file not found: $raw_path"
+  [[ "$real_path" == *.json ]] || fatal "Only .json files are allowed with @path"
+
+  max_size="${PEAQ_ROS2_MAX_JSON_FILE_BYTES:-262144}"
+  [[ "$max_size" =~ ^[0-9]+$ ]] || fatal "PEAQ_ROS2_MAX_JSON_FILE_BYTES must be an integer"
+  size="$(wc -c <"$real_path" | tr -d '[:space:]')"
+  if (( size > max_size )); then
+    fatal "JSON file too large (${size} bytes > ${max_size} bytes)"
+  fi
+
+  skill_root="$(resolve_skill_root)"
+  [[ -n "$skill_root" ]] && allowed_roots+=("$skill_root")
+
+  if [[ -n "${PEAQ_ROS2_ROOT:-}" ]]; then
+    allowed_roots+=("$PEAQ_ROS2_ROOT")
+  fi
+
+  workspace="$(resolve_openclaw_workspace)"
+  if [[ -n "$workspace" ]]; then
+    allowed_roots+=("$workspace/.peaq_robot")
+  fi
+
+  if [[ -n "${PEAQ_ROS2_JSON_ALLOWED_ROOTS:-}" ]]; then
+    local IFS=','
+    read -r -a extras <<<"${PEAQ_ROS2_JSON_ALLOWED_ROOTS}"
+    for extra_root in "${extras[@]}"; do
+      extra_root="$(echo "$extra_root" | xargs)"
+      [[ -n "$extra_root" ]] && allowed_roots+=("$extra_root")
+    done
+  fi
+
+  for root in "${allowed_roots[@]}"; do
+    [[ -e "$root" ]] || continue
+    root_real="$(resolve_realpath "$root")"
+    if path_is_within "$real_path" "$root_real"; then
+      allowed=1
+      break
+    fi
+  done
+
+  [[ "$allowed" == "1" ]] || fatal "JSON file path is outside allowed roots"
+  echo "$real_path"
+}
+
+json_compact() {
   python3 - <<'PY' "$1"
 import json
 import sys
@@ -46,10 +119,9 @@ import sys
 raw = sys.argv[1]
 try:
     obj = json.loads(raw)
-except Exception:
-    print(raw)
-else:
-    print(json.dumps(obj, separators=(',', ':')))
+except Exception as exc:
+    raise SystemExit(f"Invalid JSON input: {exc}")
+print(json.dumps(obj, separators=(',', ':')))
 PY
 }
 
@@ -61,7 +133,7 @@ read_json_arg() {
   fi
   if [[ "$arg" == @* ]]; then
     local path="${arg#@}"
-    [[ -f "$path" ]] || fatal "JSON file not found: $path"
+    path="$(validate_json_file_arg "$path")"
     python3 - <<'PY' "$path"
 import json
 import sys
@@ -72,5 +144,70 @@ print(json.dumps(obj, separators=(',', ':')))
 PY
     return
   fi
-  json_compact_or_raw "$arg"
+  json_compact "$arg"
+}
+
+ensure_transfers_enabled() {
+  local command_name="${1:-transfer command}"
+  if [[ "${PEAQ_ROS2_ENABLE_TRANSFERS:-0}" != "1" ]]; then
+    fatal "$command_name is disabled by default. Set PEAQ_ROS2_ENABLE_TRANSFERS=1 to enable value transfers."
+  fi
+}
+
+normalize_bool() {
+  local raw="${1:-false}"
+  local lowered
+  lowered="$(printf "%s" "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$lowered" in
+    1|true|yes|on)
+      echo "true"
+      ;;
+    0|false|no|off|"")
+      echo "false"
+      ;;
+    *)
+      fatal "Invalid boolean value '$raw' (expected true/false)"
+      ;;
+  esac
+}
+
+require_safe_token() {
+  local value="${1:-}"
+  local label="${2:-value}"
+  [[ -n "$value" ]] || fatal "$label cannot be empty"
+  if [[ ! "$value" =~ ^[A-Za-z0-9._:@/-]+$ ]]; then
+    fatal "$label contains unsupported characters"
+  fi
+}
+
+ros2_service_call_json() {
+  local service="$1"
+  local service_type="$2"
+  local payload_json="{}"
+  if [[ $# -ge 3 ]]; then
+    payload_json="$3"
+  fi
+  python3 - <<'PY' "$service" "$service_type" "$payload_json"
+import json
+import subprocess
+import sys
+
+service = sys.argv[1]
+service_type = sys.argv[2]
+payload_raw = sys.argv[3]
+
+try:
+    payload = json.loads(payload_raw or "{}")
+except Exception as exc:
+    raise SystemExit(f"Invalid service payload JSON: {exc}")
+
+if not isinstance(payload, dict):
+    raise SystemExit("Service payload must be a JSON object")
+
+payload_arg = json.dumps(payload, separators=(",", ":"))
+subprocess.run(
+    ["ros2", "service", "call", service, service_type, payload_arg],
+    check=True,
+)
+PY
 }

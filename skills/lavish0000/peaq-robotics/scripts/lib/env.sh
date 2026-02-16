@@ -81,17 +81,98 @@ require_root() {
   fi
 }
 
+is_world_writable_file() {
+  python3 - <<'PY' "$1"
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+try:
+    mode = os.stat(path).st_mode
+except OSError:
+    print("1")
+    raise SystemExit(0)
+print("1" if (mode & stat.S_IWOTH) else "0")
+PY
+}
+
+validate_setup_script_path() {
+  local path="$1"
+  local label="$2"
+  local real_path
+
+  [[ -n "$path" ]] || fatal "$label is not set"
+  real_path="$(resolve_realpath "$path")"
+  [[ -f "$real_path" ]] || fatal "$label not found at $path"
+  [[ "$(is_world_writable_file "$real_path")" == "0" ]] || fatal "$label points to world-writable file: $real_path"
+  echo "$real_path"
+}
+
+setup_path_is_trusted() {
+  local real_path="$1"
+  local root
+  local -a roots=()
+  local trusted_csv="${PEAQ_ROS2_TRUSTED_SETUP_ROOTS:-}"
+
+  roots+=("/opt/ros")
+  if [[ -n "$ROOT" ]]; then
+    roots+=("$ROOT/install")
+  fi
+  if [[ -n "${PEAQ_ROS2_ROOT:-}" ]]; then
+    roots+=("$PEAQ_ROS2_ROOT/install")
+  fi
+
+  if [[ -n "$trusted_csv" ]]; then
+    local IFS=','
+    read -r -a extra_roots <<<"$trusted_csv"
+    for root in "${extra_roots[@]}"; do
+      root="$(echo "$root" | xargs)"
+      [[ -n "$root" ]] && roots+=("$root")
+    done
+  fi
+
+  for root in "${roots[@]}"; do
+    [[ -e "$root" ]] || continue
+    local root_real
+    root_real="$(resolve_realpath "$root")"
+    if path_is_within "$real_path" "$root_real"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 ensure_env() {
   require_root
-  [[ -f "$ROS_SETUP" ]] || fatal "ROS setup not found at $ROS_SETUP"
-  [[ -f "$WS_SETUP" ]] || fatal "Workspace setup not found at $WS_SETUP (run colcon build)"
+  local default_ros_setup="/opt/ros/humble/setup.bash"
+  local default_ws_setup="$ROOT/install/setup.bash"
+  local ros_setup_candidate="$ROS_SETUP"
+  local ws_setup_candidate="$WS_SETUP"
+  local ros_setup_path ws_setup_path
+
+  if [[ -f "$default_ros_setup" ]]; then
+    ros_setup_candidate="$default_ros_setup"
+  fi
+  if [[ -f "$default_ws_setup" ]]; then
+    ws_setup_candidate="$default_ws_setup"
+  fi
+
+  ros_setup_path="$(validate_setup_script_path "$ros_setup_candidate" "ROS_SETUP")"
+  ws_setup_path="$(validate_setup_script_path "$ws_setup_candidate" "WS_SETUP")"
+
+  if [[ "${PEAQ_ROS2_TRUST_SETUP_OVERRIDES:-0}" != "1" ]]; then
+    setup_path_is_trusted "$ros_setup_path" || fatal "ROS_SETUP path is outside trusted roots. Set PEAQ_ROS2_TRUSTED_SETUP_ROOTS or PEAQ_ROS2_TRUST_SETUP_OVERRIDES=1."
+    setup_path_is_trusted "$ws_setup_path" || fatal "WS_SETUP path is outside trusted roots. Set PEAQ_ROS2_TRUSTED_SETUP_ROOTS or PEAQ_ROS2_TRUST_SETUP_OVERRIDES=1."
+  fi
+
   [[ -f "$CONFIG" ]] || fatal "Config file not found at $CONFIG"
 
   # ROS setup scripts assume some vars may be unset; avoid nounset errors.
   set +u
   # shellcheck disable=SC1090
-  source "$ROS_SETUP"
+  source "$ros_setup_path"
   # shellcheck disable=SC1090
-  source "$WS_SETUP"
+  source "$ws_setup_path"
   set -u
 }

@@ -3,7 +3,6 @@
 wallet_info_from_config() {
   python3 - <<'PY' "$CONFIG"
 import json
-import base64
 import os
 import sys
 try:
@@ -24,23 +23,9 @@ if not path:
 if not os.path.exists(path):
     raise SystemExit(f"wallet file not found: {path}")
 
-with open(path, "r") as f:
-    obj = json.load(f)
-
-typ = (obj.get("type") or "").lower()
-enc = (obj.get("encoding") or "base64").lower()
-payload = obj.get("data") or ""
-
-if enc == "base64":
-    raw = base64.b64decode(payload).decode("utf-8") if payload else ""
-else:
-    raw = payload
-
 print(json.dumps({
     "network": network,
     "wallet_path": path,
-    "wallet_type": typ,
-    "payload": raw,
 }))
 PY
 }

@@ -46,7 +46,6 @@ Usage:
   peaq_ros2.sh balance [address]
   peaq_ros2.sh fund <to_address> <amount> [--planck]
   peaq_ros2.sh fund-request [amount] [reason]
-  peaq_ros2.sh fund-request-send <funder_agent_id> [amount] [reason]
 
   peaq_ros2.sh store-add <key> <value_json> [mode]
   peaq_ros2.sh store-read <key>
@@ -67,11 +66,11 @@ Notes:
   - Set PEAQ_ROS2_ROOT to the peaq-robotics-ros2 repo root.
   - Set PEAQ_ROS2_CONFIG_YAML to your peaq_robot.yaml path.
   - Set ROS_DOMAIN_ID to avoid collisions when multiple ROS 2 graphs are running.
-  - Override repo with PEAQ_ROS2_REPO_URL / PEAQ_ROS2_REPO_REF for install.
   - Install runs 'colcon build --symlink-install' unless --skip-build is set.
   - Network pinning: set PEAQ_ROS2_NETWORK_PRIMARY (default quicknode3) and PEAQ_ROS2_NETWORK_FALLBACKS (CSV).
     Set PEAQ_ROS2_PIN_NETWORK=0 to leave the config network untouched.
   - Funding uses the wallet from config (wallet.path). Keep it funded to onboard new agents.
+  - Value-transfer commands are disabled by default; set PEAQ_ROS2_ENABLE_TRANSFERS=1 to enable fund/usdt transfer.
   - LOG/PID dirs default to ~/.peaq_ros2/logs-<ROS_DOMAIN_ID> and ~/.peaq_ros2/pids-<ROS_DOMAIN_ID>.
 USAGE
 }
@@ -301,12 +300,16 @@ PY
     else
       metadata="$(read_json_arg "$1")"
     fi
-    metadata_esc="$(yaml_escape "$metadata")"
-    ros2 service call "/$CORE_NODE_NAME/identity/create" peaq_ros2_interfaces/srv/IdentityCreate "{metadata_json: '$metadata_esc'}"
+    payload="$(python3 - <<'PY' "$metadata"
+import json, sys
+print(json.dumps({"metadata_json": sys.argv[1]}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/identity/create" peaq_ros2_interfaces/srv/IdentityCreate "$payload"
     ;;
   did-read)
     ensure_env
-    ros2 service call "/$CORE_NODE_NAME/identity/read" peaq_ros2_interfaces/srv/IdentityRead "{}"
+    ros2_service_call_json "/$CORE_NODE_NAME/identity/read" peaq_ros2_interfaces/srv/IdentityRead "{}"
     ;;
   balance)
     ensure_env
@@ -314,31 +317,40 @@ PY
     info="$(wallet_info_from_config)"
     python3 - <<'PY' "$info" "$address"
 import json
+import base64
 import sys
 from decimal import Decimal, getcontext
 
 info = json.loads(sys.argv[1])
 address = sys.argv[2] if len(sys.argv) > 2 else ""
 
-from peaq_robot import PeaqRobot
+from substrateinterface import SubstrateInterface
 from substrateinterface.keypair import Keypair
 
-mn = info.get("payload") or ""
-typ = info.get("wallet_type") or ""
 net = info.get("network") or ""
+wallet_path = info.get("wallet_path") or ""
 
-if typ == "mnemonic":
-    kp = Keypair.create_from_mnemonic(mn)
-elif typ in ("private_key", "private_key_hex"):
-    kp = Keypair.create_from_private_key(mn)
-else:
-    raise SystemExit(f"Unsupported wallet type: {typ}")
-
+kp = None
 if not address:
+    with open(wallet_path, "r") as f:
+        obj = json.load(f)
+    typ = (obj.get("type") or "").lower()
+    enc = (obj.get("encoding") or "base64").lower()
+    payload = obj.get("data") or ""
+    if enc == "base64":
+        secret = base64.b64decode(payload).decode("utf-8") if payload else ""
+    else:
+        secret = payload
+
+    if typ == "mnemonic":
+        kp = Keypair.create_from_mnemonic(secret)
+    elif typ in ("private_key", "private_key_hex"):
+        kp = Keypair.create_from_private_key(secret)
+    else:
+        raise SystemExit(f"Unsupported wallet type: {typ}")
     address = kp.ss58_address
 
-robot = PeaqRobot(mnemonic=mn if typ == "mnemonic" else None, network=net)
-client = robot.wallet.client
+client = SubstrateInterface(url=net)
 decimals = 18
 props = {}
 try:
@@ -363,6 +375,7 @@ PY
     ;;
   fund)
     ensure_env
+    ensure_transfers_enabled "fund"
     to_address="${1:-}"
     amount="${2:-}"
     unit="${3:-}"
@@ -375,6 +388,7 @@ PY
     info="$(wallet_info_from_config)"
     python3 - <<'PY' "$info" "$to_address" "$amount" "$planck"
 import json
+import base64
 import sys
 import time
 from decimal import Decimal, getcontext
@@ -384,22 +398,30 @@ dest = sys.argv[2]
 amount = sys.argv[3]
 planck = sys.argv[4] == "1"
 
-from peaq_robot import PeaqRobot
+from substrateinterface import SubstrateInterface
 from substrateinterface.keypair import Keypair
 
-mn = info.get("payload") or ""
-typ = info.get("wallet_type") or ""
 net = info.get("network") or ""
+wallet_path = info.get("wallet_path") or ""
+
+with open(wallet_path, "r") as f:
+    obj = json.load(f)
+typ = (obj.get("type") or "").lower()
+enc = (obj.get("encoding") or "base64").lower()
+payload = obj.get("data") or ""
+if enc == "base64":
+    secret = base64.b64decode(payload).decode("utf-8") if payload else ""
+else:
+    secret = payload
 
 if typ == "mnemonic":
-    kp = Keypair.create_from_mnemonic(mn)
+    kp = Keypair.create_from_mnemonic(secret)
 elif typ in ("private_key", "private_key_hex"):
-    kp = Keypair.create_from_private_key(mn)
+    kp = Keypair.create_from_private_key(secret)
 else:
     raise SystemExit(f"Unsupported wallet type: {typ}")
 
-robot = PeaqRobot(mnemonic=mn if typ == "mnemonic" else None, network=net)
-client = robot.wallet.client
+client = SubstrateInterface(url=net)
 decimals = 18
 props = {}
 try:
@@ -428,13 +450,14 @@ dest_before = get_balance(dest)
 sender_before = get_balance(sender_addr)
 
 try:
-    tx = robot.wallet.send_transaction(
-        module="Balances",
-        function="transfer_keep_alive",
-        params={"dest": dest, "value": value},
-        keypair=kp,
+    call = client.compose_call(
+        call_module="Balances",
+        call_function="transfer_keep_alive",
+        call_params={"dest": dest, "value": value},
     )
-    print(tx)
+    extrinsic = client.create_signed_extrinsic(call=call, keypair=kp)
+    receipt = client.submit_extrinsic(extrinsic, wait_for_inclusion=True)
+    print(receipt.extrinsic_hash)
 except Exception as e:
     # If the websocket drops after broadcast, confirm via balance delta before failing.
     deadline = time.time() + 60
@@ -460,35 +483,36 @@ PY
     amount="${1:-}"; reason="${2:-}"
     fund_request_line "$amount" "$reason"
     ;;
-  fund-request-send)
-    ensure_env
-    funder="${1:-}"; amount="${2:-}"; reason="${3:-}"
-    [[ -n "$funder" ]] || fatal "fund-request-send requires <funder_agent_id>"
-    line="$(fund_request_line "$amount" "$reason")"
-    echo "$line"
-    if command -v openclaw >/dev/null 2>&1; then
-      if [[ -n "${OPENCLAW_GATEWAY_TOKEN:-}" ]]; then
-        OPENCLAW_GATEWAY_TOKEN="$OPENCLAW_GATEWAY_TOKEN" openclaw agent --agent "$funder" --message "$line" --timeout 120 >/dev/null 2>&1 &
-      else
-        openclaw agent --agent "$funder" --message "$line" --timeout 120 >/dev/null 2>&1 &
-      fi
-      disown 2>/dev/null || true
-    fi
-    ;;
 
   store-add)
     ensure_env
     key="${1:-}"; value_json="${2:-}"; mode="${3:-FAST}"
     [[ -n "$key" ]] || fatal "store-add requires <key>"
     [[ -n "$value_json" ]] || fatal "store-add requires <value_json>"
-    value_esc="$(yaml_escape "$value_json")"
-    ros2 service call "/$CORE_NODE_NAME/storage/add" peaq_ros2_interfaces/srv/StoreAddData "{key: '$key', value_json: '$value_esc', mode: '$mode'}"
+    require_safe_token "$key" "storage key"
+    value_json="$(read_json_arg "$value_json")"
+    payload="$(python3 - <<'PY' "$key" "$value_json" "$mode"
+import json, sys
+print(json.dumps({
+    "key": sys.argv[1],
+    "value_json": sys.argv[2],
+    "mode": sys.argv[3],
+}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/storage/add" peaq_ros2_interfaces/srv/StoreAddData "$payload"
     ;;
   store-read)
     ensure_env
     key="${1:-}"
     [[ -n "$key" ]] || fatal "store-read requires <key>"
-    ros2 service call "/$CORE_NODE_NAME/storage/read" peaq_ros2_interfaces/srv/StoreReadData "{key: '$key'}"
+    require_safe_token "$key" "storage key"
+    payload="$(python3 - <<'PY' "$key"
+import json, sys
+print(json.dumps({"key": sys.argv[1]}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/storage/read" peaq_ros2_interfaces/srv/StoreReadData "$payload"
     ;;
   identity-card-json)
     ensure_env
@@ -499,8 +523,12 @@ PY
     ensure_env
     name="${1:-}"; roles="${2:-}"; endpoints="${3:-}"; meta="${4:-}"
     card_json="$(identity_card_json "$name" "$roles" "$endpoints" "$meta")"
-    metadata_esc="$(yaml_escape "$card_json")"
-    ros2 service call "/$CORE_NODE_NAME/identity/create" peaq_ros2_interfaces/srv/IdentityCreate "{metadata_json: '$metadata_esc'}"
+    payload="$(python3 - <<'PY' "$card_json"
+import json, sys
+print(json.dumps({"metadata_json": sys.argv[1]}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/identity/create" peaq_ros2_interfaces/srv/IdentityCreate "$payload"
     ;;
   identity-card-did-read)
     ensure_env
@@ -539,29 +567,65 @@ PY
     ensure_env
     role="${1:-}"; description="${2:-}"
     [[ -n "$role" ]] || fatal "access-create-role requires <role>"
-    desc_esc="$(yaml_escape "$description")"
-    ros2 service call "/$CORE_NODE_NAME/access/create_role" peaq_ros2_interfaces/srv/AccessCreateRole "{role: '$role', description: '$desc_esc'}"
+    require_safe_token "$role" "role"
+    payload="$(python3 - <<'PY' "$role" "$description"
+import json, sys
+print(json.dumps({
+    "role": sys.argv[1],
+    "description": sys.argv[2],
+}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/access/create_role" peaq_ros2_interfaces/srv/AccessCreateRole "$payload"
     ;;
   access-create-permission)
     ensure_env
     permission="${1:-}"; description="${2:-}"
     [[ -n "$permission" ]] || fatal "access-create-permission requires <permission>"
-    desc_esc="$(yaml_escape "$description")"
-    ros2 service call "/$CORE_NODE_NAME/access/create_permission" peaq_ros2_interfaces/srv/AccessCreatePermission "{permission: '$permission', description: '$desc_esc'}"
+    require_safe_token "$permission" "permission"
+    payload="$(python3 - <<'PY' "$permission" "$description"
+import json, sys
+print(json.dumps({
+    "permission": sys.argv[1],
+    "description": sys.argv[2],
+}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/access/create_permission" peaq_ros2_interfaces/srv/AccessCreatePermission "$payload"
     ;;
   access-assign-permission)
     ensure_env
     permission="${1:-}"; role="${2:-}"
     [[ -n "$permission" ]] || fatal "access-assign-permission requires <permission>"
     [[ -n "$role" ]] || fatal "access-assign-permission requires <role>"
-    ros2 service call "/$CORE_NODE_NAME/access/assign_permission" peaq_ros2_interfaces/srv/AccessAssignPermToRole "{permission: '$permission', role: '$role'}"
+    require_safe_token "$permission" "permission"
+    require_safe_token "$role" "role"
+    payload="$(python3 - <<'PY' "$permission" "$role"
+import json, sys
+print(json.dumps({
+    "permission": sys.argv[1],
+    "role": sys.argv[2],
+}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/access/assign_permission" peaq_ros2_interfaces/srv/AccessAssignPermToRole "$payload"
     ;;
   access-grant-role)
     ensure_env
     role="${1:-}"; user="${2:-}"
     [[ -n "$role" ]] || fatal "access-grant-role requires <role>"
     [[ -n "$user" ]] || fatal "access-grant-role requires <user>"
-    ros2 service call "/$CORE_NODE_NAME/access/grant_role" peaq_ros2_interfaces/srv/AccessGrantRole "{role: '$role', user: '$user'}"
+    require_safe_token "$role" "role"
+    require_safe_token "$user" "user"
+    payload="$(python3 - <<'PY' "$role" "$user"
+import json, sys
+print(json.dumps({
+    "role": sys.argv[1],
+    "user": sys.argv[2],
+}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$CORE_NODE_NAME/access/grant_role" peaq_ros2_interfaces/srv/AccessGrantRole "$payload"
     ;;
 
   tether-start)
@@ -579,21 +643,47 @@ PY
     ensure_env
     label="${1:-}"; export_mnemonic="${2:-false}"
     [[ -n "$label" ]] || fatal "tether-wallet-create requires <label>"
-    ros2 service call "/$TETHER_NODE_NAME/wallet/create" peaq_ros2_interfaces/srv/TetherCreateWallet "{label: '$label', export_mnemonic: $export_mnemonic}"
+    export_mnemonic="$(normalize_bool "$export_mnemonic")"
+    payload="$(python3 - <<'PY' "$label" "$export_mnemonic"
+import json, sys
+print(json.dumps({
+    "label": sys.argv[1],
+    "export_mnemonic": sys.argv[2].lower() == "true",
+}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$TETHER_NODE_NAME/wallet/create" peaq_ros2_interfaces/srv/TetherCreateWallet "$payload"
     ;;
   tether-usdt-balance)
     ensure_env
     address="${1:-}"
     [[ -n "$address" ]] || fatal "tether-usdt-balance requires <address>"
-    ros2 service call "/$TETHER_NODE_NAME/usdt/balance" peaq_ros2_interfaces/srv/TetherGetUsdtBalance "{address: '$address'}"
+    payload="$(python3 - <<'PY' "$address"
+import json, sys
+print(json.dumps({"address": sys.argv[1]}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$TETHER_NODE_NAME/usdt/balance" peaq_ros2_interfaces/srv/TetherGetUsdtBalance "$payload"
     ;;
   tether-usdt-transfer)
     ensure_env
+    ensure_transfers_enabled "tether-usdt-transfer"
     from_address="${1:-}"; to_address="${2:-}"; amount="${3:-}"; dry_run="${4:-true}"
     [[ -n "$from_address" ]] || fatal "tether-usdt-transfer requires <from_address>"
     [[ -n "$to_address" ]] || fatal "tether-usdt-transfer requires <to_address>"
     [[ -n "$amount" ]] || fatal "tether-usdt-transfer requires <amount>"
-    ros2 service call "/$TETHER_NODE_NAME/usdt/transfer" peaq_ros2_interfaces/srv/TetherTransferUsdt "{from_address: '$from_address', to_address: '$to_address', amount: '$amount', dry_run: $dry_run}"
+    dry_run="$(normalize_bool "$dry_run")"
+    payload="$(python3 - <<'PY' "$from_address" "$to_address" "$amount" "$dry_run"
+import json, sys
+print(json.dumps({
+    "from_address": sys.argv[1],
+    "to_address": sys.argv[2],
+    "amount": sys.argv[3],
+    "dry_run": sys.argv[4].lower() == "true",
+}, separators=(",", ":")))
+PY
+)"
+    ros2_service_call_json "/$TETHER_NODE_NAME/usdt/transfer" peaq_ros2_interfaces/srv/TetherTransferUsdt "$payload"
     ;;
 
   onboard)

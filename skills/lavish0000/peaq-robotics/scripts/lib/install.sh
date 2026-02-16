@@ -1,196 +1,24 @@
 #!/usr/bin/env bash
 
-patch_core_identity() {
-  local repo_root="$1"
-  local target="$repo_root/peaq_ros2_core/peaq_ros2_core/core_node.py"
-  [[ -f "$target" ]] || return 0
-  python3 - <<'PY' "$target"
-import re
-import sys
-
-path = sys.argv[1]
-with open(path, "r") as f:
-    text = f.read()
-
-create_method = """    def _handle_identity_create(self, request, response):
-        \"\"\"Handle identity creation requests.\"\"\"
-        try:
-            # Auto-derive DID name from wallet address
-            did_name = f'did:peaq:{self.robot_sdk.address}'
-            self.logger.info(f'Creating identity: {did_name}')
-
-            metadata_json = request.metadata_json or ''
-            did_document = None
-            if metadata_json:
-                try:
-                    metadata_obj = json.loads(metadata_json)
-                except Exception:
-                    metadata_obj = {\"raw\": metadata_json}
-                if isinstance(metadata_obj, dict):
-                    doc = dict(metadata_obj)
-                    if \"verificationMethod\" in doc and \"verificationMethods\" not in doc:
-                        doc[\"verificationMethods\"] = doc.pop(\"verificationMethod\")
-                    if \"service\" in doc and \"services\" not in doc:
-                        doc[\"services\"] = doc.pop(\"service\")
-                    if \"authentication\" in doc and \"authentications\" not in doc:
-                        doc[\"authentications\"] = doc.pop(\"authentication\")
-                    if not any(k in doc for k in (\"id\", \"controller\", \"verificationMethods\", \"authentications\", \"services\", \"signature\")):
-                        doc = {\"services\": [{\"id\": \"#metadata\", \"type\": \"peaqMetadata\", \"data\": json.dumps(doc)}]}
-                    did_document = doc
-                else:
-                    did_document = {\"services\": [{\"id\": \"#metadata\", \"type\": \"peaqMetadata\", \"data\": json.dumps(metadata_obj)}]}
-
-            # Create identity using SDK
-            tx_hash = self.robot_sdk.id.create_identity(
-                name=did_name,
-                did_document=did_document,
-                confirmation_mode=self.config.default_confirmation_mode
-            )
-            # Normalize SDK return (string vs SubstrateSendResult or dict).
-            try:
-                if isinstance(tx_hash, dict):
-                    tx_hash = tx_hash.get("tx_hash") or tx_hash.get("txHash") or tx_hash.get("hash")
-                elif hasattr(tx_hash, "tx_hash"):
-                    tx_hash = getattr(tx_hash, "tx_hash")
-                elif hasattr(tx_hash, "txHash"):
-                    tx_hash = getattr(tx_hash, "txHash")
-                elif hasattr(tx_hash, "hash"):
-                    tx_hash = getattr(tx_hash, "hash")
-            except Exception:
-                pass
-            if not isinstance(tx_hash, str):
-                tx_hash = str(tx_hash)
-            try:
-                import re
-                m = re.search(r"0x[a-fA-F0-9]{64}", tx_hash or "")
-                if m:
-                    tx_hash = m.group(0)
-            except Exception:
-                pass
-            if not tx_hash:
-                raise RuntimeError('identity create returned empty tx_hash')
-
-            response.tx_hash = tx_hash
-
-            # Log success
-            log_identity_operation(self.logger, 'created', did_name, tx_hash, success=True)
-
-            # Publish transaction status
-            self._publish_tx_status('PENDING', tx_hash)
-
-            self.logger.info(f'✅ Identity creation initiated: {tx_hash[:8]}...')
-
-        except Exception as e:
-            error_msg = f'Failed to create identity: {str(e)}'
-            self.logger.error(error_msg)
-            # Retry once with a fresh SDK/session
-            try:
-                self.logger.info('Retrying identity create after SDK reinit')
-                self._initialize_robot_sdk()
-                tx_hash = self.robot_sdk.id.create_identity(
-                    name=did_name,
-                    did_document=did_document,
-                    confirmation_mode=self.config.default_confirmation_mode
-                )
-                try:
-                    if isinstance(tx_hash, dict):
-                        tx_hash = tx_hash.get("tx_hash") or tx_hash.get("txHash") or tx_hash.get("hash")
-                    elif hasattr(tx_hash, "tx_hash"):
-                        tx_hash = getattr(tx_hash, "tx_hash")
-                    elif hasattr(tx_hash, "txHash"):
-                        tx_hash = getattr(tx_hash, "txHash")
-                    elif hasattr(tx_hash, "hash"):
-                        tx_hash = getattr(tx_hash, "hash")
-                except Exception:
-                    pass
-                if not isinstance(tx_hash, str):
-                    tx_hash = str(tx_hash)
-                try:
-                    import re
-                    m = re.search(r"0x[a-fA-F0-9]{64}", tx_hash or "")
-                    if m:
-                        tx_hash = m.group(0)
-                except Exception:
-                    pass
-                if not tx_hash:
-                    raise RuntimeError('identity create returned empty tx_hash')
-                response.tx_hash = tx_hash
-                log_identity_operation(self.logger, 'created', did_name, tx_hash, success=True)
-                self._publish_tx_status('PENDING', tx_hash)
-                self.logger.info(f'✅ Identity creation initiated: {tx_hash[:8]}...')
-                return response
-            except Exception as e2:
-                self.logger.error(f'Failed to create identity (retry): {str(e2)}')
-            response.tx_hash = ''
-            did_name = f'did:peaq:{self.robot_sdk.address}'
-            log_identity_operation(self.logger, 'creation_failed', did_name, success=False)
-
-        return response
-"""
-
-read_method = """    def _handle_identity_read(self, request, response):
-        \"\"\"Handle identity read requests.\"\"\"
-        try:
-            self.logger.info('Reading identity document')
-
-            # Read identity using SDK
-            doc = self.robot_sdk.id.read_identity()
-            if isinstance(doc, dict) and doc.get('read_status') == 'error':
-                raise RuntimeError(doc.get('error', 'identity read error'))
-
-            response.doc_json = json.dumps(doc, indent=2)
-
-            log_identity_operation(self.logger, 'read', success=True)
-            self.logger.info('✅ Identity document retrieved')
-
-        except Exception as e:
-            error_msg = f'Failed to read identity: {str(e)}'
-            self.logger.error(error_msg)
-            # Retry once with a fresh SDK/session
-            try:
-                self.logger.info('Retrying identity read after SDK reinit')
-                self._initialize_robot_sdk()
-                doc = self.robot_sdk.id.read_identity()
-                if isinstance(doc, dict) and doc.get('read_status') == 'error':
-                    raise RuntimeError(doc.get('error', 'identity read error'))
-                response.doc_json = json.dumps(doc, indent=2)
-                log_identity_operation(self.logger, 'read', success=True)
-                self.logger.info('✅ Identity document retrieved')
-                return response
-            except Exception as e2:
-                self.logger.error(f'Failed to read identity (retry): {str(e2)}')
-            response.doc_json = '{}'
-            log_identity_operation(self.logger, 'read_failed', success=False)
-
-        return response
-"""
-
-changed = False
-
-def replace_block(source: str, name: str, replacement: str) -> tuple[str, bool]:
-    pattern = rf"^[ \t]*def {name}\(.*?\n[ \t]*return response\n"
-    match = re.search(pattern, source, flags=re.S | re.M)
-    if not match:
-        return source, False
-    return source[:match.start()] + replacement + source[match.end():], True
-
-text, did_change = replace_block(text, "_handle_identity_create", create_method)
-changed = changed or did_change
-text, did_change = replace_block(text, "_handle_identity_read", read_method)
-changed = changed or did_change
-
-if changed:
-    with open(path, "w") as f:
-        f.write(text)
-PY
-
-  echo "Patched core_node identity handlers for DID document mapping + retries."
+is_official_repo_url() {
+  local url="${1:-}"
+  case "$url" in
+    "https://github.com/peaqnetwork/peaq-robotics-ros2"|\
+    "https://github.com/peaqnetwork/peaq-robotics-ros2.git"|\
+    "git@github.com:peaqnetwork/peaq-robotics-ros2.git")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 install_repo() {
-  local repo="${PEAQ_ROS2_REPO_URL:-https://github.com/peaqnetwork/peaq-robotics-ros2}"
+  # NOTE: For supply-chain safety, this installer only clones the official peaqnetwork repo.
+  local repo="https://github.com/peaqnetwork/peaq-robotics-ros2"
   local target="${HOME}/peaq-robotics-ros2"
-  local ref="${PEAQ_ROS2_REPO_REF:-}"
+  local ref=""
   local update="0"
   local skip_build="0"
   local target_set="0"
@@ -231,6 +59,11 @@ install_repo() {
   command -v git >/dev/null 2>&1 || fatal "git not found (required for install)"
 
   if [[ -d "$target/.git" ]]; then
+    local origin
+    origin="$(git -C "$target" remote get-url origin 2>/dev/null || true)"
+    [[ -n "$origin" ]] || fatal "Existing repo at $target has no origin remote configured"
+    is_official_repo_url "$origin" || fatal "Refusing to use non-official origin remote at $target: $origin"
+
     if [[ "$update" == "1" ]]; then
       git -C "$target" fetch --all --tags
       if [[ -n "$ref" ]]; then
@@ -262,8 +95,6 @@ install_repo() {
       set_config_wallet_path "~/.peaq_robot/wallet.json"
     fi
   fi
-
-  patch_core_identity "$target"
 
   if [[ "$skip_build" == "0" ]]; then
     [[ -f "$ROS_SETUP" ]] || fatal "ROS setup not found at $ROS_SETUP (set ROS_SETUP or install ROS 2)"

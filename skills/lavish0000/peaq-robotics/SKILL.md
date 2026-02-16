@@ -20,11 +20,17 @@ Use this skill to make OpenClaw operate a local peaq-robotics-ros2 workspace by 
 2) Install the peaq-robotics-ros2 repo (defaults to `https://github.com/peaqnetwork/peaq-robotics-ros2` into `~/peaq-robotics-ros2`). This auto-copies `peaq_robot.example.yaml` to `peaq_robot.yaml`, pins mainnet WSS, and auto-runs `colcon build --symlink-install`:
 
 - `{baseDir}/scripts/peaq_ros2.sh install`
-- Optional overrides: `PEAQ_ROS2_REPO_URL=...` and/or `PEAQ_ROS2_REPO_REF=...`
+- Optional pinning: `{baseDir}/scripts/peaq_ros2.sh install --ref <tag|commit>`
 - Update an existing clone: `{baseDir}/scripts/peaq_ros2.sh install --update`
 - Skip build if you want to build later: `{baseDir}/scripts/peaq_ros2.sh install --skip-build`
 
 **Requires:** ROS 2 + `colcon` on the host (the installer sources `ROS_SETUP`, default `/opt/ros/humble/setup.bash`).
+
+Installer safety:
+- Existing clones are accepted only when `origin` points to the official `peaqnetwork/peaq-robotics-ros2` repo.
+- The installer does not patch or mutate upstream source files.
+- For reproducible installs, pin a known tag/commit with `--ref`.
+- Setup scripts are sourced only from trusted roots by default (`/opt/ros`, `<PEAQ_ROS2_ROOT>/install`). To allow custom setup roots, set `PEAQ_ROS2_TRUSTED_SETUP_ROOTS` (CSV) or `PEAQ_ROS2_TRUST_SETUP_OVERRIDES=1`.
 
 Network pinning + fallback:
 - `PEAQ_ROS2_NETWORK_PRIMARY` (default `wss://quicknode3.peaq.xyz`)
@@ -44,7 +50,7 @@ Wallet path:
 
 Note: when invoked from an OpenClaw workspace (where `AGENTS.md`/`TOOLS.md` exist) and `PEAQ_ROS2_CONFIG_YAML` is not set, the helper auto-creates a per-workspace config at `<workspace>/.peaq_robot/peaq_robot.yaml` with a workspace-local wallet (`<workspace>/.peaq_robot/wallet.json`). It also auto-assigns a stable `ROS_DOMAIN_ID` in the 100–199 range per workspace (overriding the default `0`) to avoid collisions.
 
-4) Ensure the agent can run host commands (non-sandboxed session or ROS 2 inside the sandbox).
+4) Ensure the agent can run `ros2` commands and access the built workspace. If you use sandboxing, run inside a dedicated container that already contains ROS 2 + the built peaq-robotics-ros2 workspace.
 
 ### Invite message templates (copy/paste)
 
@@ -112,10 +118,10 @@ Use the funded agent to transfer PEAQ to a new agent address:
 - Check balance: `{baseDir}/scripts/peaq_ros2.sh balance [address]`
 - Fund another agent: `{baseDir}/scripts/peaq_ros2.sh fund <to_address> <amount>`
 - Generate a request: `{baseDir}/scripts/peaq_ros2.sh fund-request [amount] [reason]`
-- Auto-send request to a funder agent: `{baseDir}/scripts/peaq_ros2.sh fund-request-send <funder_agent_id> [amount] [reason]`
 
 Notes:
 - `fund` uses the local agent wallet from `wallet.path` in config.
+- `fund` and `tether-usdt-transfer` are disabled by default; set `PEAQ_ROS2_ENABLE_TRANSFERS=1` before running value transfers.
 - Amount is in PEAQ by default; use `--planck` to send raw planck units.
 - If a fund transfer returns a transient websocket error, the script checks for a balance delta before failing.
 - Storage bridge defaults to local IPFS when Pinata is not configured (`storage.mode` missing or pinata.jwt empty).
@@ -132,9 +138,6 @@ If you know the funder agent id, use OpenClaw’s agent-to-agent tool to send th
 
 1) Generate the line: `{baseDir}/scripts/peaq_ros2.sh fund-request [amount] [reason]`
 2) Send it via `sessions_send` to the funder agent.
-
-If you’re running outside the agent runtime, you can also use the helper:
-`{baseDir}/scripts/peaq_ros2.sh fund-request-send <funder_agent_id> [amount] [reason]`
 
 ### Agent-to-agent messaging (OpenClaw)
 
@@ -202,6 +205,9 @@ Use the helper script subcommands for the common service calls:
 Notes:
 - `did-create` treats JSON with DID fields (`id`, `controller`, `services`, `verificationMethods`, etc.) as a full DID document.
 - Plain metadata JSON is wrapped into a DID `services` entry (`type: peaqMetadata`) so it is preserved on-chain.
+- JSON inputs are validated before every service call (`did-create`, `store-add`, identity-card metadata).
+- Service payloads are serialized as JSON objects (no shell-built YAML strings), reducing injection risk from user-provided content.
+- `@/path/file.json` input is restricted to approved roots (`skill folder`, `PEAQ_ROS2_ROOT`, and workspace `.peaq_robot`; optional extra roots via `PEAQ_ROS2_JSON_ALLOWED_ROOTS`).
 
 For full service/parameter mappings and raw ROS 2 topic/service names, read `references/peaq_ros2_services.md`.
 
@@ -209,6 +215,7 @@ For full service/parameter mappings and raw ROS 2 topic/service names, read `ref
 
 - Confirm before actions that incur on-chain cost or real funds (DID creation, storage writes, access changes, USDT transfers).
 - Never pass private keys or mnemonics through ROS 2 services; tether operations use address-only calls.
+- Wallet secrets stay local. The helper scripts avoid printing or passing mnemonics on the command line.
 - If running multiple ROS 2 graphs on one host, set `ROS_DOMAIN_ID` per environment to avoid collisions.
 
 ## References
