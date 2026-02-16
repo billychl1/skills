@@ -3,9 +3,15 @@
   "slug": "markdown-viewer",
   "displayName": "Live Markdown Viewer",
   "latest": {
-    "version": "1.0.5",
-    "publishedAt": 1771202828657,
-    "commit": "https://github.com/openclaw/skills/commit/de77bed184db0a6beea2e06b6493595cb174dbce"
+    "version": "1.0.6",
+    "publishedAt": 1771202993460,
+    "commit": null
   },
-  "history": []
+  "history": [
+    {
+      "version": "1.0.5",
+      "publishedAt": 1771202828657,
+      "commit": "https://github.com/openclaw/skills/commit/de77bed184db0a6beea2e06b6493595cb174dbce"
+    }
+  ]
 }
