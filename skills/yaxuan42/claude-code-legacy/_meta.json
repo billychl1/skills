@@ -1,0 +1,11 @@
+{
+  "owner": "yaxuan42",
+  "slug": "claude-code-legacy",
+  "displayName": "claude-code (Deprecated alias)",
+  "latest": {
+    "version": "0.1.0",
+    "publishedAt": 1771142918722,
+    "commit": null
+  },
+  "history": []
+}
