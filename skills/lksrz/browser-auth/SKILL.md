@@ -13,13 +13,14 @@ Running a remote browser session carries a risk of **Remote Code Execution (RCE)
 1.  **Sandbox Enabled**: This skill runs Chromium with the sandbox **ENABLED** by default. 
 2.  **Avoid Unsafe Sites**: Do not use this tunnel to visit untrusted or unknown URLs.
 3.  **Local Bind**: Defaults to `127.0.0.1`. Do not expose to the public internet without a secure tunnel (VPN, SSH, Cloudflare Tunnel).
-4.  **Isolation**: It is highly recommended to run the agent/node in an isolated container or VM.
+4.  **Sensitive Data**: The output `session.json` contains plain-text session cookies. Handle it as a secret. Delete it once the task is finished.
 
-## When to Use
+## Environment Variables
 
-- When a website requires a login that involves Captcha or 2FA.
-- When bot detection prevents the agent from logging in automatically.
-- When the user prefers not to share their password with the agent.
+- `AUTH_HOST`: IP to bind the server to (default: `127.0.0.1`).
+- `AUTH_TOKEN`: Secret token for accessing the tunnel (default: random hex).
+- `BROWSER_NO_SANDBOX`: Set to `true` to disable Chromium sandbox (not recommended).
+- `BROWSER_PROXY`: SOCKS5/HTTP proxy for the browser (e.g. `socks5://127.0.0.1:40000`).
 
 ## Workflow
 
@@ -28,6 +29,7 @@ Running a remote browser session carries a risk of **Remote Code Execution (RCE)
 3.  **Wait for Session**: Wait for the user to complete the login and click "DONE".
 4.  **Verify**: Use `scripts/verify_session.js` to ensure the session is valid.
 5.  **Use Cookies**: Use the captured `session.json` in other browser tools.
+6.  **Cleanup**: Delete `session.json` after the task is complete.
 
 ## Tools
 
@@ -43,12 +45,6 @@ Checks if the captured cookies actually log you in.
 ```bash
 node scripts/verify_session.js <session_file> <target_url> <expected_string_in_page>
 ```
-
-## Troubleshooting
-
-### Sandbox Issues on Linux
-If the browser fails to start with a "sandbox" error, you may need to enable unprivileged user namespaces on your host or (less securely) set `BROWSER_NO_SANDBOX=true`. 
-**Warning**: Disabling the sandbox significantly increases the risk of host compromise if a malicious site is visited.
 
 ## Runtime Requirements
 

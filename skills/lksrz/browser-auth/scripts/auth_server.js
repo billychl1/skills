@@ -18,19 +18,18 @@ async function startServer({
     const server = http.createServer(app);
     const io = new Server(server);
 
+    const ASSET_PATH = path.join(__dirname, '..', 'assets', 'index.html');
+
     app.get('/', (req, res) => {
         if (req.query.token !== token) {
             return res.status(403).send('Forbidden: Invalid or missing token');
         }
-        // Use path.resolve to ensure we have an absolute path
-        const indexPath = path.resolve(__dirname, '../assets/index.html');
         
-        if (!fs.existsSync(indexPath)) {
-            console.error(`Asset not found at: ${indexPath}`);
-            return res.status(404).send(`NotFoundError: Asset not found at ${indexPath}`);
+        if (!fs.existsSync(ASSET_PATH)) {
+            return res.status(500).send(`Critical Error: Frontend assets missing`);
         }
         
-        res.sendFile(indexPath);
+        res.sendFile(ASSET_PATH);
     });
 
     io.use((socket, next) => {
@@ -42,7 +41,7 @@ async function startServer({
     });
 
     io.on('connection', async (socket) => {
-        console.log('User authenticated and connected');
+        console.log('User authenticated and connected via Socket.io');
         
         const launchArgs = [
             '--disable-dev-shm-usage',
@@ -94,25 +93,37 @@ async function startServer({
         });
 
         socket.on('goto', async ({ url }) => {
-            try { await page.goto(url.startsWith('http') ? url : `https://${url}`); await sendScreenshot(); } catch (e) {}
+            try {
+                // Basic validation: must be http/https
+                const target = url.startsWith('http') ? url : `https://${url}`;
+                if (!target.startsWith('http')) {
+                   console.error('Invalid URL attempt:', url);
+                   return;
+                }
+                await page.goto(target);
+                await sendScreenshot();
+            } catch (e) { console.error('Goto error:', e.message); }
         });
 
         socket.on('done', async () => {
             const cookies = await context.cookies();
             const storage = await page.evaluate(() => JSON.stringify(localStorage));
             fs.writeFileSync(sessionFile, JSON.stringify({ cookies, storage }, null, 2));
+            console.log(`[OK] Session saved to ${sessionFile}`);
             socket.emit('captured', { success: true });
         });
 
         socket.on('disconnect', async () => {
             clearInterval(interval);
             await browser.close();
+            console.log('User disconnected, browser session closed.');
         });
     });
 
     server.listen(port, host, () => {
         console.log(`\n🚀 BROWSER AUTH SERVER READY`);
-        console.log(`URL: http://${host === '0.0.0.0' ? 'YOUR_IP' : host}:${port}/?token=${token}\n`);
+        console.log(`URL: http://${host}:${port}/?token=${token}`);
+        console.log(`Note: If host is 0.0.0.0, use your machine IP to access.`);
     });
 
     return server;
