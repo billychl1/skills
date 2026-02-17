@@ -1,38 +1,34 @@
 ---
 name: kma-weather
-description: Get weather information from Korea Meteorological Administration (기상청). Provides current conditions, short-term forecasts (up to 3 days), mid-term forecasts (3-10 days), and weather warnings. Requires KMA API service key.
-homepage: https://www.data.go.kr/data/15084084/openapi.do
-metadata: {"openclaw":{"emoji":"🌦️","requires":{"bins":["python3"],"env":["KMA_SERVICE_KEY"]}}}
+description: Get weather from Korea Meteorological Administration (기상청). Provides current conditions, forecasts (3-10 days), and weather warnings/advisories (기상특보). Use when user needs Korean weather data, 기상특보, or precise local forecasts (5km grid). Requires KMA_SERVICE_KEY.
+metadata:
+  openclaw:
+    emoji: "🌦️"
+    homepage: "https://www.data.go.kr/data/15084084/openapi.do"
+    requires:
+      bins: ["python3"]
+      env: ["KMA_SERVICE_KEY"]
+    primaryEnv: "KMA_SERVICE_KEY"
 ---
 
 # kma-weather
 
-Get official weather information from **Korea Meteorological Administration (KMA)** 기상청.
-
-## Features
-
-- **Current Weather** - Real-time observations (temperature, humidity, precipitation, wind)
-- **Short-term Forecast** - Ultra-short (6 hours) and short-term (3 days) forecasts
-- **Mid-term Forecast** - 3-10 day outlook
-- **Weather Warnings** - Official warnings (typhoon, heavy rain, snow, etc.)
-- **High Resolution** - 5km×5km grid system for precise local forecasts
-
 ## Quick Start
 
 ```bash
-# Get current weather + 6-hour forecast (brief)
+# Current weather + 6-hour forecast
 python3 skills/kma-weather/scripts/forecast.py brief --lat 37.5665 --lon 126.9780
 
-# Get all forecasts as JSON (current + ultrashort + shortterm)
+# All forecasts as JSON (current + ultrashort + shortterm)
 python3 skills/kma-weather/scripts/forecast.py all --lat 37.5665 --lon 126.9780 --json
 
-# Get all short-term forecast data (3 days)
+# Short-term forecast (3 days)
 python3 skills/kma-weather/scripts/forecast.py shortterm --lat 37.5665 --lon 126.9780 --days all
 
-# Get current nationwide weather warnings status
+# Nationwide weather warnings/advisories (기상특보)
 python3 skills/kma-weather/scripts/weather_warnings.py
 
-# Get mid-term forecast for Seoul
+# Mid-term forecast (3-10 days)
 python3 skills/kma-weather/scripts/midterm.py --region 서울
 ```
 
@@ -41,59 +37,62 @@ python3 skills/kma-weather/scripts/midterm.py --region 서울
 ### 1. Get API Key
 
 1. Visit [공공데이터포털](https://www.data.go.kr)
-2. Sign up / Log in
-3. Request access to these 3 APIs (all use the same key):
+2. Request access to these 3 APIs (all use the same key):
    - [기상청 단기예보 조회서비스](https://www.data.go.kr/data/15084084/openapi.do) (15084084)
    - [기상청 기상특보 조회서비스](https://www.data.go.kr/data/15000415/openapi.do) (15000415)
    - [기상청 중기예보 조회서비스](https://www.data.go.kr/data/15059468/openapi.do) (15059468)
-4. Wait for approval (usually instant to 1 day, auto-approved)
-5. Go to My Page → API Key Management
-6. Copy your `ServiceKey`
-
-**Note**: All 3 APIs use the **same API key**.
+3. Copy your `ServiceKey` from My Page → API Key Management
 
 ### 2. Set Environment Variable
 
-Add your API key to the environment:
+In `~/.openclaw/openclaw.json`:
 
-**For Sandbox (Docker/Podman)**:
-```yaml
-# In agents.yaml
-agents:
-  defaults:
-    sandbox:
-      docker:
-        env:
-          KMA_SERVICE_KEY: "your-service-key-here"
+**Sandbox** (add to `agents.defaults.sandbox.docker.env`):
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "docker": {
+          "env": {
+            "KMA_SERVICE_KEY": "your-key"
+          }
+        }
+      }
+    }
+  }
+}
 ```
 
-**For Host**:
-```yaml
-# In agents.yaml
-agents:
-  defaults:
-    env:
-      vars:
-        KMA_SERVICE_KEY: "your-service-key-here"
-```
-
-Or export directly:
-```bash
-export KMA_SERVICE_KEY="your-service-key-here"
+**Host** (add to `env.vars`):
+```json
+{
+  "env": {
+    "vars": {
+      "KMA_SERVICE_KEY": "your-key"
+    }
+  }
+}
 ```
 
 ## Usage
 
-### Current Weather
+### forecast.py
 
-Get real-time weather observations:
+| Command | Description |
+|---------|-------------|
+| `current` | Real-time observations |
+| `ultrashort` | 6-hour forecast |
+| `shortterm` | 3-day forecast |
+| `brief` | current + ultrashort |
+| `all` | current + ultrashort + shortterm |
 
-```bash
-python3 skills/kma-weather/scripts/forecast.py current \
-  --lat 37.5665 --lon 126.9780
-```
+**Options**:
+- `--lat`, `--lon`: Coordinates (required)
+- `--days`: For shortterm - `1` (tomorrow, default), `2`, `3`, or `all`
+- `--json`: Raw JSON output
 
-**Output**:
+**Output example** (`current`):
 ```
 🌤️ 현재 날씨 (초단기실황)
 🌡️  기온: 5.2°C
@@ -103,68 +102,9 @@ python3 skills/kma-weather/scripts/forecast.py current \
 🧭 풍향: NW (315°)
 ```
 
-### Short-term Forecast
+### weather_warnings.py
 
-**Ultra-short forecast (6 hours)**:
-```bash
-python3 skills/kma-weather/scripts/forecast.py ultrashort \
-  --lat 37.5665 --lon 126.9780
-```
-
-**Short-term forecast (3 days)**:
-```bash
-# 내일 예보 (기본값)
-python3 skills/kma-weather/scripts/forecast.py shortterm \
-  --lat 37.5665 --lon 126.9780
-
-# 모레 예보
-python3 skills/kma-weather/scripts/forecast.py shortterm \
-  --lat 37.5665 --lon 126.9780 --days 2
-
-# 글피 예보
-python3 skills/kma-weather/scripts/forecast.py shortterm \
-  --lat 37.5665 --lon 126.9780 --days 3
-
-# 모든 예보 데이터 (3일치 전체)
-python3 skills/kma-weather/scripts/forecast.py shortterm \
-  --lat 37.5665 --lon 126.9780 --days all
-```
-
-**`--days` Options **: `all`=전체, `1`=내일(기본), `2`=모레, `3`=글피
-
-### Combined Forecasts
-
-**Brief (current + 6 hours)** - Perfect for quick weather checks:
-```bash
-python3 skills/kma-weather/scripts/forecast.py brief \
-  --lat 37.5665 --lon 126.9780
-```
-
-**All (current + ultrashort + shortterm)** - Full data:
-```bash
-python3 skills/kma-weather/scripts/forecast.py all \
-  --lat 37.5665 --lon 126.9780
-```
-
-When outputting JSON, return a structure separated by type:
-```bash
-python3 skills/kma-weather/scripts/forecast.py brief --lat 37.5665 --lon 126.9780 --json
-# {"current": {...}, "ultrashort": {...}}
-
-python3 skills/kma-weather/scripts/forecast.py all --lat 37.5665 --lon 126.9780 --json
-# {"current": {...}, "ultrashort": {...}, "shortterm": {...}}
-```
-
-### Weather Warnings
-
-Check current nationwide weather warning status:
-
-```bash
-# Get current nationwide warning status
-python3 skills/kma-weather/scripts/weather_warnings.py
-```
-
-**Output**:
+Returns current nationwide 기상특보:
 ```
 🚨 기상특보 현황
 발표시각: 2026-02-01 10:00
@@ -178,130 +118,59 @@ python3 skills/kma-weather/scripts/weather_warnings.py
   • (1) 강풍 예비특보 : 02월 02일 새벽(00시~06시) : 울릉도.독도
 ```
 
-### Mid-term Forecast
+### midterm.py
 
-Get 3-10 day forecasts by region:
+3-10 day forecast by region.
 
 ```bash
-# By region name
 python3 skills/kma-weather/scripts/midterm.py --region 서울
-
-# By station code
 python3 skills/kma-weather/scripts/midterm.py --stn-id 109
 ```
 
-**Supported regions**: 서울, 인천, 경기, 부산, 대구, 광주, 대전, 울산, 세종, 강원, 충북, 충남, 전북, 전남, 경북, 경남, 제주
+**Regions**: 서울, 인천, 경기, 부산, 대구, 광주, 대전, 울산, 세종, 강원, 충북, 충남, 전북, 전남, 경북, 경남, 제주
 
-### Raw JSON Output
+### grid_converter.py
 
-All scripts support `--json` flag for raw API responses:
-
-```bash
-python3 skills/kma-weather/scripts/forecast.py current \
-  --lat 37.5665 --lon 126.9780 --json
-```
-
-## Grid Coordinates
-
-KMA uses a **5km×5km grid system** based on Lambert Conformal Conic projection.
-
-Convert lat/lon to grid coordinates:
-
+Convert lat/lon to KMA 5km grid (auto-handled by other scripts):
 ```bash
 python3 skills/kma-weather/scripts/grid_converter.py 37.5665 126.9780
+# Output: Grid: (60, 127)
 ```
 
-**Output**:
-```
-Input: (37.5665, 126.9780)
-Grid:  (60, 127)
-Verify: (37.5665, 126.9780)
-```
+## API Notes
 
-The scripts automatically handle grid conversion, so you can use latitude/longitude directly.
-
-## Using in Python Code
-
-Import and use functions directly:
-
-```python
-from skills.kma_weather.scripts.forecast import fetch_forecast, format_current
-from skills.kma_weather.scripts.grid_converter import latlon_to_grid
-
-# Get current weather
-data = fetch_forecast("current", lat=37.5665, lon=126.9780)
-print(format_current(data))
-
-# Convert coordinates
-nx, ny = latlon_to_grid(37.5665, 126.9780)
-print(f"Grid: ({nx}, {ny})")
-```
-
-## API Details
-
-For detailed API documentation, see:
-- [references/api-forecast.md] - Short-term forecast API
-- [references/api-warnings.md] - Weather warnings API
-- [references/api-midterm.md] - Mid-term forecast API
-- [references/category-codes.md] - Category code reference
-
-## Workflow Examples
-
-See [examples/daily-check.md] for a complete daily weather check workflow.
-
-## Notes
-
-- **API Release Schedule**:
-  - Current/ultra-short: Every hour at :10 minutes
+- **Release Schedule**:
+  - Current: Every hour at :40 (base_time: HH00)
+  - Ultra-short: Every hour at :45 (base_time: HH30)
   - Short-term: 02:10, 05:10, 08:10, 11:10, 14:10, 17:10, 20:10, 23:10 (KST)
   - Mid-term: 06:00, 18:00 (KST)
-- **Grid Resolution**: 5km×5km (higher resolution than global services)
 - **Coverage**: South Korea only
-- **API Limits**: Check 공공데이터포털 for your plan's rate limits
-- **Auto-pagination**: Script automatically fetches all pages when data exceeds single page limit (300 rows/page)
+- **Auto-pagination**: Scripts fetch all pages automatically
 
-## Comparison: weather vs kma-weather
+## vs weather skill
 
-| Feature | weather (Global) | kma-weather (KMA) |
-|---------|------------------|-------------------|
-| Data Source | wttr.in, Open-Meteo | Korea Meteorological Administration |
-| Coverage | Worldwide | South Korea only |
-| API Key | Not required | **Required** |
-| Resolution | City-level | 5km×5km grid |
-| Official Warnings | No | **Yes** (typhoon, heavy rain, snow) |
-| Best For | Quick global lookups | Detailed Korean forecasts and weather warning |
+| | weather | kma-weather |
+|-|---------|-------------|
+| Coverage | Global | Korea only |
+| API Key | No | **Required** |
+| Resolution | City-level | 5km grid |
+| Weather Warnings | No | **Yes** (기상특보) |
 
-**Recommendation**: Use both skills complementarily:
-- `weather` for global locations
-- `kma-weather` for detailed Korean forecasts and weather warnings
+**Use both**: `weather` for global, `kma-weather` for detailed Korean forecasts and 기상특보.
 
 ## Troubleshooting
 
-### "KMA API service key not found"
-Set the `KMA_SERVICE_KEY` environment variable. See [Setup](#setup).
+| Error | Solution |
+|-------|----------|
+| `KMA API service key not found` | Set `KMA_SERVICE_KEY` env var |
+| `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` | Check API approval status, verify key |
+| `SERVICE_TIMEOUT_ERROR` | Retry later |
+| No data returned | Verify coordinates are in South Korea |
 
-### "API Error 30: SERVICE_KEY_IS_NOT_REGISTERED_ERROR"
-Your API key is invalid or not approved yet. Check:
-1. Did you request access to all 3 KMA APIs?
-2. Has your request been approved?
-3. Is the key copied correctly (no extra spaces)?
+## References (Raw API Documentation)
 
-### "API Error 22: SERVICE_TIMEOUT_ERROR"
-The KMA API server is experiencing delays. Try again in a few moments.
-
-### No data returned
-- Check if the coordinates are within South Korea.
-- Verify the grid coordinates using `grid_converter.py`.
-- Try increasing `--rows` parameter (default: 300). If it's too high, you may receive a `429 too many requests` error.
-
-## License
-
-This skill uses public APIs from the Korea Meteorological Administration via 공공데이터포털.
-
----
-
-## Implementation Status
-
-This skill implements the most commonly used endpoints. Additional endpoints may be added in future versions based on needs.
-
-For more details, please read [implement-status.md]
+- [references/api-forecast.md](references/api-forecast.md) - 단기예보 API endpoints, parameters, response format
+- [references/api-warnings.md](references/api-warnings.md) - 기상특보 API endpoints, parameters, response format
+- [references/api-midterm.md](references/api-midterm.md) - 중기예보 API endpoints, parameters, response format
+- [references/category-codes.md](references/category-codes.md) - KMA category codes (SKY, PTY, etc.)
+- [implement-status.md](implement-status.md) - Implementation status

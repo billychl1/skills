@@ -179,12 +179,17 @@ def fetch_forecast(
         return data
 
 
-def format_current(data: Dict) -> str:
+def format_current(data: Dict, lat: float = None, lon: float = None,
+                   nx: int = None, ny: int = None) -> str:
     """
     Format ultra-short-term observation data (current weather).
 
     Args:
         data: API response data
+        lat: Latitude in decimal degrees (optional)
+        lon: Longitude in decimal degrees (optional)
+        nx: KMA grid X coordinate (optional)
+        ny: KMA grid Y coordinate (optional)
 
     Returns:
         str: Formatted text output
@@ -207,6 +212,9 @@ def format_current(data: Dict) -> str:
     # Build output
     output = []
     output.append("🌤️ 현재 날씨 (초단기실황)")
+    location_line = format_location_line(lat, lon, nx, ny)
+    if location_line:
+        output.append(location_line)
 
     # Temperature
     if "T1H" in values:
@@ -302,12 +310,28 @@ def get_sky_condition(sky_code: str) -> str:
     return sky_map.get(sky_code, "알 수 없음")
 
 
-def format_ultrashort(data: Dict) -> str:
+def format_location_line(lat: float = None, lon: float = None,
+                         nx: int = None, ny: int = None) -> str:
+    """Format location information line for forecast output."""
+    if lat is None or lon is None:
+        return ""
+    parts = [f"📍 위치: {lat}, {lon}"]
+    if nx is not None and ny is not None:
+        parts.append(f"(격자: {nx}, {ny})")
+    return " ".join(parts)
+
+
+def format_ultrashort(data: Dict, lat: float = None, lon: float = None,
+                      nx: int = None, ny: int = None) -> str:
     """
     Format ultra-short-term forecast data (6 hours).
 
     Args:
         data: API response data
+        lat: Latitude in decimal degrees (optional)
+        lon: Longitude in decimal degrees (optional)
+        nx: KMA grid X coordinate (optional)
+        ny: KMA grid Y coordinate (optional)
 
     Returns:
         str: Formatted text output
@@ -336,6 +360,9 @@ def format_ultrashort(data: Dict) -> str:
     # Build output
     output = []
     output.append("⏱️ 초단기예보 (6시간)")
+    location_line = format_location_line(lat, lon, nx, ny)
+    if location_line:
+        output.append(location_line)
 
     for key in sorted(forecasts.keys())[:6]:  # Show up to 6 hours
         fc = forecasts[key]
@@ -370,13 +397,18 @@ def format_ultrashort(data: Dict) -> str:
     return "\n".join(output)
 
 
-def format_shortterm(data: Dict, days=1) -> str:
+def format_shortterm(data: Dict, days=1, lat: float = None, lon: float = None,
+                     nx: int = None, ny: int = None) -> str:
     """
     Format short-term forecast data (3 days).
 
     Args:
         data: API response data
         days: Days from today ('all'=all days, 1=tomorrow, 2=day after, 3=3 days later)
+        lat: Latitude in decimal degrees (optional)
+        lon: Longitude in decimal degrees (optional)
+        nx: KMA grid X coordinate (optional)
+        ny: KMA grid Y coordinate (optional)
 
     Returns:
         str: Formatted text output
@@ -408,6 +440,9 @@ def format_shortterm(data: Dict, days=1) -> str:
         filtered_keys = sorted(forecasts.keys())
         output = []
         output.append("📆 단기예보 (전체)")
+        location_line = format_location_line(lat, lon, nx, ny)
+        if location_line:
+            output.append(location_line)
     else:
         # Calculate target date for filtering
         target_date = (datetime.now() + timedelta(days=int(days))).strftime("%Y%m%d")
@@ -417,6 +452,9 @@ def format_shortterm(data: Dict, days=1) -> str:
         date_formatted = f"{target_date[:4]}-{target_date[4:6]}-{target_date[6:8]}"
         output = []
         output.append(f"📆 단기예보 ({day_label}, {date_formatted})")
+        location_line = format_location_line(lat, lon, nx, ny)
+        if location_line:
+            output.append(location_line)
 
     if not filtered_keys:
         output.append("\n해당 날짜의 예보 데이터가 없습니다.")
@@ -580,12 +618,13 @@ def main():
             if args.json:
                 print(json.dumps(results, ensure_ascii=False, indent=2))
             else:
+                nx, ny = latlon_to_grid(args.lat, args.lon)
                 outputs = []
-                outputs.append(format_current(results["current"]))
+                outputs.append(format_current(results["current"], args.lat, args.lon, nx, ny))
                 outputs.append("")
-                outputs.append(format_ultrashort(results["ultrashort"]))
+                outputs.append(format_ultrashort(results["ultrashort"], args.lat, args.lon, nx, ny))
                 outputs.append("")
-                outputs.append(format_shortterm(results["shortterm"], args.days))
+                outputs.append(format_shortterm(results["shortterm"], args.days, args.lat, args.lon, nx, ny))
                 print("\n".join(outputs))
 
         elif args.type == "brief":
@@ -597,10 +636,11 @@ def main():
             if args.json:
                 print(json.dumps(results, ensure_ascii=False, indent=2))
             else:
+                nx, ny = latlon_to_grid(args.lat, args.lon)
                 outputs = []
-                outputs.append(format_current(results["current"]))
+                outputs.append(format_current(results["current"], args.lat, args.lon, nx, ny))
                 outputs.append("")
-                outputs.append(format_ultrashort(results["ultrashort"]))
+                outputs.append(format_ultrashort(results["ultrashort"], args.lat, args.lon, nx, ny))
                 print("\n".join(outputs))
         else:
             # Fetch single forecast type
@@ -609,12 +649,13 @@ def main():
             if args.json:
                 print(json.dumps(data, ensure_ascii=False, indent=2))
             else:
+                nx, ny = latlon_to_grid(args.lat, args.lon)
                 if args.type == "current":
-                    output = format_current(data)
+                    output = format_current(data, args.lat, args.lon, nx, ny)
                 elif args.type == "ultrashort":
-                    output = format_ultrashort(data)
+                    output = format_ultrashort(data, args.lat, args.lon, nx, ny)
                 elif args.type == "shortterm":
-                    output = format_shortterm(data, args.days)
+                    output = format_shortterm(data, args.days, args.lat, args.lon, nx, ny)
                 else:
                     output = "Unknown forecast type"
                 print(output)

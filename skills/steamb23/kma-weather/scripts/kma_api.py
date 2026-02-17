@@ -127,6 +127,6 @@ if __name__ == "__main__":
     # Test service key loading
     try:
         key = get_service_key()
-        print(f"✓ Service key loaded: {key[:10]}...{key[-10:]}")
+        print(f"✓ Service key loaded successfully")
     except ValueError as e:
         print(f"✗ {e}")

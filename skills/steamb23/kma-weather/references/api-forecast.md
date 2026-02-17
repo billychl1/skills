@@ -14,7 +14,11 @@ KMA short-term forecast service provides three types of forecasts using the same
 
 **Description**: Current weather observations (실시간 관측 데이터)
 
-**Release Schedule**: Every hour at :10 minutes (매시각 10분)
+**Release Schedule**: Every hour at :40 minutes
+
+**Base Time Format**: HH00 (on the hour, e.g., 0600, 1400)
+
+**Data Availability**: ~10 minutes after release (:40-:50 each hour)
 
 **Parameters**:
 
@@ -55,7 +59,11 @@ curl "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?
 
 **Description**: Forecast for the next 6 hours (6시간 예보)
 
-**Release Schedule**: Every hour at :10 minutes (매시각 10분)
+**Release Schedule**: Every hour at :45 minutes
+
+**Base Time Format**: HH30 (30 min past the hour, e.g., 0630, 1430)
+
+**Data Availability**: ~10 minutes after release (:45-:55 each hour)
 
 **Parameters**: Same as ultra-short-term observation
 
@@ -208,7 +216,8 @@ All endpoints return JSON (or XML) in this structure:
 ## Usage Notes
 
 1. **Base Time Calculation**:
-   - For current/ultra-short: Use the most recent hour (if before :10, use previous hour)
+   - For current: Use HH00 format. If before :40, use previous hour
+   - For ultra-short: Use HH30 format. If before :45, use previous hour's :30
    - For short-term: Use the most recent release time (02, 05, 08, 11, 14, 17, 20, 23)
 
 2. **Data Availability**:
