@@ -14,6 +14,7 @@ if [[ -z "${TOKEN}" || -z "${ORG_ID}" ]]; then
     echo "Error: Neither TOKEN/ORG_ID env vars nor config file $CONFIG found" >&2
     exit 1
   fi
+  # File is executed as shell (source); prefer env vars for security.
   source "$CONFIG"
 fi
 
