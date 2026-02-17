@@ -1,97 +1,93 @@
 ---
 name: Cameras
-description: Connect to security cameras, capture snapshots, control photography gear, and process video feeds with protocol support and smart home integration.
+slug: cameras
+version: 1.0.1
+description: Connect to security cameras, capture snapshots, and process video feeds with protocol support.
+changelog: User-driven credential model, declared tool requirements
+metadata: {"clawdbot":{"emoji":"📷","requires":{"bins":["ffmpeg"]},"os":["linux","darwin"]}}
 ---
 
-## Decision Tree
+## Scope
 
-| Task | Reference |
-|------|-----------|
-| Connect to security cameras (Ring, Nest, IP cams) | Check `security-integration.md` |
-| Capture from webcams or USB cameras | Check `capture.md` |
-| Control DSLR/mirrorless (tethering, remote shoot) | Check `photography-control.md` |
-| Process video (detection, recognition) | Check `processing.md` |
-| Choose or compare cameras (buying guide) | Check `buying-guide.md` |
+This skill:
+- ✅ Generates camera capture commands
+- ✅ Guides integration with security systems
+- ✅ Provides troubleshooting for camera issues
 
----
+**User-driven model:**
+- User provides camera credentials (RTSP URLs, passwords)
+- User runs capture commands
+- User installs required tools
 
-## Core Capabilities
+This skill does NOT:
+- ❌ Store camera credentials
+- ❌ Run captures automatically without user request
+- ❌ Access cameras without user-provided access info
 
-**What an agent with this skill can do:**
+## Requirements
 
-1. **Capture snapshots** from any connected camera on demand
-2. **Record short clips** (10-60s) for review or sending
-3. **List available cameras** on the system or network
-4. **Receive motion alerts** from security systems
-5. **Control photography cameras** (shoot, adjust settings, download)
-6. **Describe what the camera sees** (using vision models)
+**Required:**
+- `ffmpeg` — for capture and recording
 
----
+**Optional (user installs if needed):**
+- `gphoto2` — for DSLR/mirrorless control
+- `v4l2-ctl` — for USB cameras on Linux
 
-## Protocol Quick Reference
+## Quick Reference
 
-| Protocol | Use Case | Access Method |
-|----------|----------|---------------|
-| **RTSP** | IP cameras, NVRs | `rtsp://user:pass@ip:554/stream` |
-| **ONVIF** | Discovery + control | `python-onvif-zeep`, auto-discover |
-| **HTTP/MJPEG** | Simple IP cams | `/snapshot.jpg`, `/video.mjpg` |
-| **Home Assistant** | Unified access | REST API `/api/camera_proxy/` |
-| **Frigate** | Motion events + clips | MQTT + HTTP API |
-| **USB/V4L2** | Webcams, capture cards | `ffmpeg`, `opencv`, device index |
-| **gPhoto2** | DSLR/mirrorless control | USB PTP protocol |
+| Topic | File |
+|-------|------|
+| Security camera integration | `security-integration.md` |
+| USB/webcam capture | `capture.md` |
+| DSLR control | `photography-control.md` |
+| Video processing | `processing.md` |
 
----
+## Core Rules
 
-## Common Commands
-
+### 1. User Provides Camera Access
+When user requests capture:
 ```
-# List cameras
-ffmpeg -list_devices true -f avfoundation -i dummy  # macOS
-v4l2-ctl --list-devices                              # Linux
+User: "Snapshot from my front door camera"
+Agent: "I need the RTSP URL. Format: rtsp://user:pass@ip/stream
+        Provide it or set CAMERA_FRONT_URL in env."
+User: "rtsp://admin:pass@192.168.1.50/stream1"
+→ Agent generates: ffmpeg -i "URL" -frames:v 1 snapshot.jpg
+```
 
-# Snapshot from RTSP
-ffmpeg -i "rtsp://user:pass@ip/stream" -frames:v 1 snapshot.jpg
-
-# Snapshot from webcam
-ffmpeg -f avfoundation -i "0" -frames:v 1 webcam.jpg  # macOS
-ffmpeg -f v4l2 -i /dev/video0 -frames:v 1 webcam.jpg  # Linux
+### 2. Common Commands
+```bash
+# Snapshot from RTSP (user provides URL)
+ffmpeg -i "$RTSP_URL" -frames:v 1 snapshot.jpg
 
 # Record 10s clip
-ffmpeg -i "rtsp://ip/stream" -t 10 -c copy clip.mp4
+ffmpeg -i "$RTSP_URL" -t 10 -c copy clip.mp4
+
+# Webcam snapshot (macOS)
+ffmpeg -f avfoundation -i "0" -frames:v 1 webcam.jpg
+
+# Webcam snapshot (Linux)
+ffmpeg -f v4l2 -i /dev/video0 -frames:v 1 webcam.jpg
 ```
 
----
+### 3. Protocol Reference
+| Protocol | Use Case | URL Format |
+|----------|----------|------------|
+| RTSP | IP cameras | `rtsp://user:pass@ip:554/stream` |
+| HTTP | Simple cams | `http://ip/snapshot.jpg` |
+| V4L2 | USB cameras | `/dev/video0` |
 
-## Integration Patterns
-
-### With Home Assistant
-If cameras are already in HA, use the REST API:
+### 4. Integration Patterns
+**With Home Assistant:**
 ```
 GET /api/camera_proxy/camera.front_door
-→ Returns JPEG snapshot
 ```
+User provides HA URL and token.
 
-### With Frigate (recommended for security)
-Frigate handles detection. Agent just listens:
-- MQTT: `frigate/events` for motion alerts
+**With Frigate:**
+- MQTT: `frigate/events` for alerts
 - HTTP: `/api/events/{id}/snapshot.jpg`
 
-### With Vision Models
-Capture snapshot → send to vision model for description:
-```
-1. ffmpeg → snapshot.jpg
-2. Vision API → "A person standing at the front door"
-3. Return description to user
-```
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| Camera offline | Check network, power, IP hasn't changed |
-| RTSP timeout | Try adding `?tcp` or use port 8554 |
-| Permission denied | Run with sudo or add user to video group |
-| No video, only audio | Wrong stream path, try /stream1, /ch01/main |
-| gPhoto2 camera busy | Close other apps using camera, replug USB |
+### 5. Security
+- Never log camera URLs with credentials
+- Recommend user stores URLs in env vars
+- RTSP streams may be unencrypted — warn about LAN security
