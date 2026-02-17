@@ -3,11 +3,16 @@
   "slug": "faster-whisper",
   "displayName": "Faster Whisper",
   "latest": {
-    "version": "1.4.3",
-    "publishedAt": 1771330069181,
-    "commit": "https://github.com/openclaw/skills/commit/a011523a11f70002b6a76628a3b37294af2cea89"
+    "version": "1.4.5",
+    "publishedAt": 1771330969827,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.4.3",
+      "publishedAt": 1771330069181,
+      "commit": "https://github.com/openclaw/skills/commit/a011523a11f70002b6a76628a3b37294af2cea89"
+    },
     {
       "version": "1.3.0",
       "publishedAt": 1771323291654,
