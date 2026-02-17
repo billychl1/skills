@@ -3,11 +3,16 @@
   "slug": "discord-voice",
   "displayName": "Discord Voice",
   "latest": {
-    "version": "0.1.2",
-    "publishedAt": 1771202319795,
-    "commit": "https://github.com/openclaw/skills/commit/135db4c5294a9e835b8c92914d43bcddcb1ecadb"
+    "version": "0.1.5",
+    "publishedAt": 1771277141005,
+    "commit": null
   },
   "history": [
+    {
+      "version": "0.1.2",
+      "publishedAt": 1771202319795,
+      "commit": "https://github.com/openclaw/skills/commit/135db4c5294a9e835b8c92914d43bcddcb1ecadb"
+    },
     {
       "version": "0.1.0",
       "publishedAt": 1769456717738,

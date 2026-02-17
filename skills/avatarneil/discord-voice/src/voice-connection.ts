@@ -1,7 +1,7 @@
 /**
  * Discord Voice Connection Manager
  * Handles joining, leaving, listening, and speaking in voice channels
- * 
+ *
  * Features:
  * - Barge-in: Stops speaking when user starts talking
  * - Auto-reconnect heartbeat: Keeps connection alive
@@ -16,27 +16,20 @@ import {
   AudioPlayerStatus,
   VoiceConnectionStatus,
   entersState,
-  getVoiceConnection,
   EndBehaviorType,
   StreamType,
   type VoiceConnection,
   type AudioPlayer,
   type AudioReceiveStream,
 } from "@discordjs/voice";
-import type {
-  VoiceChannel,
-  StageChannel,
-  GuildMember,
-  VoiceBasedChannel,
-} from "discord.js";
-import { Readable, PassThrough } from "stream";
-import { pipeline } from "stream/promises";
+import type { VoiceBasedChannel } from "discord.js";
+import { Readable } from "node:stream";
 import * as prism from "prism-media";
 import { WaveFile } from "wavefile";
 
 import type { DiscordVoiceConfig } from "./config.js";
 import type { TTSResult } from "./tts.js";
-import { getVadThreshold } from "./config.js";
+import type { STTResult } from "./stt.js";
 
 import { SPEAK_COOLDOWN_VAD_MS, SPEAK_COOLDOWN_PROCESSING_MS, getRmsThreshold } from "./constants.js";
 import { createSTTProvider, type STTProvider } from "./stt.js";
@@ -55,7 +48,7 @@ function createResourceFromTTSResult(result: TTSResult): ReturnType<typeof creat
     const samples = new Int16Array(
       result.audioBuffer.buffer,
       result.audioBuffer.byteOffset,
-      result.audioBuffer.length / 2
+      result.audioBuffer.length / 2,
     );
     wav.fromScratch(1, result.sampleRate, "16", samples);
     return createAudioResource(Readable.from(Buffer.from(wav.toBuffer())));
@@ -77,6 +70,28 @@ function isRetryableTtsError(error: unknown): boolean {
     /\b503\b/.test(msg)
   );
 }
+
+/** Detect STT errors that warrant trying a fallback (quota, rate limit, connection, Wyoming unreachable) */
+function isRetryableSttError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("quota_exceeded") ||
+    lower.includes("rate limit") ||
+    lower.includes("rate_limit") ||
+    /\b401\b/.test(msg) ||
+    /\b429\b/.test(msg) ||
+    /\b503\b/.test(msg) ||
+    lower.includes("econnrefused") ||
+    lower.includes("econnreset") ||
+    lower.includes("etimedout") ||
+    lower.includes("connection") ||
+    lower.includes("timeout") ||
+    lower.includes("unreachable") ||
+    lower.includes("wyoming")
+  );
+}
+
 import { StreamingSTTManager, createStreamingSTTProvider } from "./streaming-stt.js";
 import { createStreamingTTSProvider, type StreamingTTSProvider } from "./streaming-tts.js";
 
@@ -104,15 +119,34 @@ export interface VoiceSession {
   player: AudioPlayer;
   userAudioStates: Map<string, UserAudioState>;
   speaking: boolean;
-  processing: boolean;           // Lock to prevent concurrent processing
-  lastSpokeAt?: number;          // Timestamp when bot finished speaking (for cooldown)
-  startedSpeakingAt?: number;    // Timestamp when bot started speaking (for echo suppression)
-  thinkingPlayer?: AudioPlayer;  // Separate player for thinking sound
+  processing: boolean; // Lock to prevent concurrent processing
+  lastSpokeAt?: number; // Timestamp when bot finished speaking (for cooldown)
+  startedSpeakingAt?: number; // Timestamp when bot started speaking (for echo suppression)
+  thinkingPlayer?: AudioPlayer; // Separate player for thinking sound
   heartbeatInterval?: ReturnType<typeof setInterval>;
   lastHeartbeat?: number;
   reconnecting?: boolean;
-  /** When true, use fallback TTS for rest of session (set after primary fails with quota/rate limit) */
-  useFallbackTts?: boolean;
+  /** Fallback TTS provider to use for rest of session (set after primary fails with quota/rate limit) */
+  fallbackTtsProvider?: "openai" | "elevenlabs" | "deepgram" | "polly" | "kokoro" | "edge";
+  /** Fallback STT provider to use for rest of session (set after primary fails) */
+  fallbackSttProvider?:
+    | "whisper"
+    | "gpt4o-mini"
+    | "gpt4o-transcribe"
+    | "gpt4o-transcribe-diarize"
+    | "deepgram"
+    | "local-whisper"
+    | "wyoming-whisper";
+  /** Set when agent used discord_voice speak tool – skip speaking returned text to avoid duplicate */
+  spokeViaToolThisRun?: boolean;
+  /** Dedupe: skip processing same transcript within this window (ms) */
+  lastProcessedTranscript?: string;
+  lastProcessedTranscriptAt?: number;
+  /** Runtime overrides via /discord_voice set-* commands */
+  sttProviderOverride?: VoiceSession["fallbackSttProvider"];
+  ttsProviderOverride?: VoiceSession["fallbackTtsProvider"];
+  modelOverride?: string;
+  thinkLevelOverride?: "off" | "low" | "medium" | "high";
 }
 
 export class VoiceConnectionManager {
@@ -126,10 +160,10 @@ export class VoiceConnectionManager {
   private onTranscript: (userId: string, guildId: string, channelId: string, text: string) => Promise<string>;
 
   // Heartbeat configuration (can be overridden via config.heartbeatIntervalMs)
-  private readonly DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;  // 30 seconds
-  private readonly HEARTBEAT_TIMEOUT_MS = 60_000;   // 60 seconds before reconnect
+  private readonly DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
+  private readonly HEARTBEAT_TIMEOUT_MS = 60_000; // 60 seconds before reconnect
   private readonly MAX_RECONNECT_ATTEMPTS = 3;
-  
+
   private get HEARTBEAT_INTERVAL_MS(): number {
     return this.config.heartbeatIntervalMs ?? this.DEFAULT_HEARTBEAT_INTERVAL_MS;
   }
@@ -137,11 +171,23 @@ export class VoiceConnectionManager {
   constructor(
     config: DiscordVoiceConfig,
     logger: Logger,
-    onTranscript: (userId: string, guildId: string, channelId: string, text: string) => Promise<string>
+    onTranscript: (userId: string, guildId: string, channelId: string, text: string) => Promise<string>,
   ) {
     this.config = config;
     this.logger = logger;
     this.onTranscript = onTranscript;
+  }
+
+  /**
+   * Mark that the agent spoke via discord_voice tool during this transcript run.
+   * processRecording will skip speaking the returned text to avoid duplicate playback.
+   */
+  markSpokeViaTool(guildId: string): void {
+    const session = this.sessions.get(guildId);
+    if (session) {
+      session.spokeViaToolThisRun = true;
+      this.logger.debug?.("[discord-voice] Agent spoke via discord_voice tool, will skip final speak");
+    }
   }
 
   /**
@@ -234,9 +280,9 @@ export class VoiceConnectionManager {
 
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       if (session.reconnecting) return;
-      
+
       this.logger.warn(`[discord-voice] Disconnected from voice channel in ${channel.guild.name}`);
-      
+
       try {
         // Try to reconnect within 5 seconds
         await Promise.race([
@@ -279,7 +325,7 @@ export class VoiceConnectionManager {
       session.connection.destroy();
 
       // Wait before reconnecting (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
 
       // Create new connection
       const newConnection = joinVoiceChannel({
@@ -299,19 +345,21 @@ export class VoiceConnectionManager {
 
       // Wait for ready
       await entersState(newConnection, VoiceConnectionStatus.Ready, 20_000);
-      
+
       session.reconnecting = false;
       session.lastHeartbeat = Date.now();
-      
+
       // Restart listening
       this.startListening(session);
-      
+
       // Setup handlers for new connection
       this.setupConnectionHandlers(session, channel);
-      
+
       this.logger.info(`[discord-voice] Reconnected successfully`);
     } catch (error) {
-      this.logger.error(`[discord-voice] Reconnection failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `[discord-voice] Reconnection failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       await this.attemptReconnect(session, channel, attempt + 1);
     }
   }
@@ -328,15 +376,15 @@ export class VoiceConnectionManager {
     session.heartbeatInterval = setInterval(() => {
       const now = Date.now();
       const connectionState = session.connection.state.status;
-      
+
       // Update heartbeat if connection is healthy
       if (connectionState === VoiceConnectionStatus.Ready) {
         session.lastHeartbeat = now;
         this.logger.debug?.(`[discord-voice] Heartbeat OK for guild ${session.guildId}`);
-      } else if (session.lastHeartbeat && (now - session.lastHeartbeat > this.HEARTBEAT_TIMEOUT_MS)) {
+      } else if (session.lastHeartbeat && now - session.lastHeartbeat > this.HEARTBEAT_TIMEOUT_MS) {
         // Connection has been unhealthy for too long
         this.logger.warn(`[discord-voice] Heartbeat timeout, connection state: ${connectionState}`);
-        
+
         // Don't attempt reconnect if already doing so
         if (!session.reconnecting) {
           // Trigger reconnection by destroying and rejoining
@@ -399,13 +447,13 @@ export class VoiceConnectionManager {
       }
 
       // Ignore audio during cooldown period (prevents echo from triggering)
-      if (session.lastSpokeAt && (Date.now() - session.lastSpokeAt) < SPEAK_COOLDOWN_VAD_MS) {
+      if (session.lastSpokeAt && Date.now() - session.lastSpokeAt < SPEAK_COOLDOWN_VAD_MS) {
         this.logger.debug?.(`[discord-voice] Ignoring speech during cooldown (likely echo)`);
         return;
       }
 
       this.logger.debug?.(`[discord-voice] User ${userId} started speaking`);
-      
+
       // ═══════════════════════════════════════════════════════════════
       // BARGE-IN / ECHO SUPPRESSION
       // Discord's voice detection can't distinguish between the user talking
@@ -418,7 +466,7 @@ export class VoiceConnectionManager {
         this.logger.debug?.(`[discord-voice] Ignoring speech while bot is speaking (echo suppression)`);
         return;
       }
-      
+
       if (session.processing) {
         // While processing a request, don't start new recordings
         // Clear any accumulated streaming transcripts to prevent stale text
@@ -460,7 +508,7 @@ export class VoiceConnectionManager {
       }
 
       this.logger.debug?.(`[discord-voice] User ${userId} stopped speaking`);
-      
+
       const state = session.userAudioStates.get(userId);
       if (!state || !state.isRecording) {
         return;
@@ -468,13 +516,20 @@ export class VoiceConnectionManager {
 
       state.lastActivityMs = Date.now();
 
+      // Clear previous timer – multiple "end" events must not spawn multiple processRecording calls
+      if (state.silenceTimer) {
+        clearTimeout(state.silenceTimer);
+        state.silenceTimer = undefined;
+      }
+
       // Set silence timer to process the recording
       state.silenceTimer = setTimeout(async () => {
+        state.silenceTimer = undefined;
         if (state.isRecording) {
           const chunksToProcess = [...state.chunks];
           state.isRecording = false;
           state.chunks = [];
-          
+
           // Clean up streams
           if (state.opusStream) {
             state.opusStream.destroy();
@@ -484,7 +539,7 @@ export class VoiceConnectionManager {
             state.decoder.destroy();
             state.decoder = undefined;
           }
-          
+
           if (chunksToProcess.length > 0) {
             await this.processRecording(session, userId, chunksToProcess);
           }
@@ -501,7 +556,7 @@ export class VoiceConnectionManager {
     if (session.player.state.status !== AudioPlayerStatus.Idle) {
       session.player.stop(true);
     }
-    
+
     // Stop thinking player if active
     if (session.thinkingPlayer && session.thinkingPlayer.state.status !== AudioPlayerStatus.Idle) {
       session.thinkingPlayer.stop(true);
@@ -544,10 +599,10 @@ export class VoiceConnectionManager {
 
     // If streaming STT is available and enabled, use it
     const useStreaming = this.streamingSTT && this.config.sttProvider === "deepgram" && this.config.streamingSTT;
-    
+
     if (useStreaming && this.streamingSTT) {
       // Create streaming session for this user
-      const streamingSession = this.streamingSTT.getOrCreateSession(userId, (text, isFinal) => {
+      this.streamingSTT.getOrCreateSession(userId, (text, isFinal) => {
         if (isFinal) {
           this.logger.debug?.(`[discord-voice] Streaming transcript (final): "${text}"`);
         } else {
@@ -559,18 +614,18 @@ export class VoiceConnectionManager {
         if (state.isRecording) {
           // Send to streaming STT
           this.streamingSTT?.sendAudio(userId, chunk);
-          
+
           // Also buffer for fallback/debugging
           state.chunks.push(chunk);
           state.lastActivityMs = Date.now();
 
           // Check max recording length
           const totalSize = state.chunks.reduce((sum, c) => sum + c.length, 0);
-          const durationMs = (totalSize / 2) / 48; // 16-bit samples at 48kHz
+          const durationMs = totalSize / 2 / 48; // 16-bit samples at 48kHz
           if (durationMs >= this.config.maxRecordingMs) {
             this.logger.debug?.(`[discord-voice] Max recording length reached for user ${userId}`);
             state.isRecording = false;
-            
+
             if (state.opusStream) {
               state.opusStream.destroy();
               state.opusStream = undefined;
@@ -594,7 +649,7 @@ export class VoiceConnectionManager {
 
           // Check max recording length
           const totalSize = state.chunks.reduce((sum, c) => sum + c.length, 0);
-          const durationMs = (totalSize / 2) / 48; // 16-bit samples at 48kHz
+          const durationMs = totalSize / 2 / 48; // 16-bit samples at 48kHz
           if (durationMs >= this.config.maxRecordingMs) {
             this.logger.debug?.(`[discord-voice] Max recording length reached for user ${userId}`);
             state.isRecording = false;
@@ -645,17 +700,19 @@ export class VoiceConnectionManager {
     }
 
     // Cooldown after speaking to prevent echo/accidental triggers
-    if (session.lastSpokeAt && (Date.now() - session.lastSpokeAt) < SPEAK_COOLDOWN_PROCESSING_MS) {
+    if (session.lastSpokeAt && Date.now() - session.lastSpokeAt < SPEAK_COOLDOWN_PROCESSING_MS) {
       this.logger.debug?.(`[discord-voice] Skipping processing - in cooldown period after speaking`);
       return;
     }
 
     const audioBuffer = Buffer.concat(chunks);
-    
+
     // Skip very short recordings (likely noise) - check BEFORE setting processing lock
-    const durationMs = (audioBuffer.length / 2) / 48; // 16-bit samples at 48kHz
+    const durationMs = audioBuffer.length / 2 / 48; // 16-bit samples at 48kHz
     if (durationMs < this.config.minAudioMs) {
-      this.logger.debug?.(`[discord-voice] Skipping short recording (${Math.round(durationMs)}ms < ${this.config.minAudioMs}ms) for user ${userId}`);
+      this.logger.debug?.(
+        `[discord-voice] Skipping short recording (${Math.round(durationMs)}ms < ${this.config.minAudioMs}ms) for user ${userId}`,
+      );
       return;
     }
 
@@ -663,42 +720,121 @@ export class VoiceConnectionManager {
     const rms = this.calculateRMS(audioBuffer);
     const minRMS = getRmsThreshold(this.config.vadSensitivity);
     if (rms < minRMS) {
-      this.logger.debug?.(`[discord-voice] Skipping quiet audio (RMS ${Math.round(rms)} < ${minRMS}) for user ${userId}`);
+      this.logger.debug?.(
+        `[discord-voice] Skipping quiet audio (RMS ${Math.round(rms)} < ${minRMS}) for user ${userId}`,
+      );
       return;
     }
 
     // Set processing lock AFTER passing all filters
     session.processing = true;
+    session.spokeViaToolThisRun = false;
 
-    this.logger.info(`[discord-voice] Processing ${Math.round(durationMs)}ms of audio (RMS: ${Math.round(rms)}) from user ${userId}`);
+    this.logger.info(
+      `[discord-voice] Processing ${Math.round(durationMs)}ms of audio (RMS: ${Math.round(rms)}) from user ${userId}`,
+    );
 
     try {
-      let transcribedText: string;
+      let transcribedText = "";
+      const fallbackList = this.config.sttFallbackProviders ?? [];
 
-      // Check if we have streaming transcript available
-      if (this.streamingSTT && this.config.sttProvider === "deepgram" && this.config.streamingSTT) {
-        // Get accumulated transcript from streaming session
-        transcribedText = this.streamingSTT.finalizeSession(userId);
-        
-        // Fallback to batch if streaming didn't capture anything
-        if (!transcribedText || transcribedText.trim().length === 0) {
-          this.logger.debug?.(`[discord-voice] Streaming empty, falling back to batch STT`);
-          const sttResult = await this.sttProvider.transcribe(audioBuffer, 48000);
-          transcribedText = sttResult.text;
+      const effectivePrimaryStt = this.getEffectiveSttProvider(session);
+      const primaryIsWyoming = effectivePrimaryStt === "wyoming-whisper";
+
+      const tryFallbacks = async (): Promise<string> => {
+        for (const provider of fallbackList) {
+          try {
+            const r = await this.tryTranscribeWithProvider(audioBuffer, 48000, provider);
+            if (r.text?.trim()) {
+              if (!primaryIsWyoming) {
+                session.fallbackSttProvider = provider;
+                this.logger.info(`[discord-voice] Using fallback STT: ${provider} (session will stay on fallback)`);
+              } else {
+                this.logger.info(`[discord-voice] Using fallback STT: ${provider}`);
+              }
+              return r.text;
+            }
+          } catch (fbErr) {
+            this.logger.warn(
+              `[discord-voice] Fallback STT ${provider} failed: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`,
+            );
+          }
         }
-      } else {
-        // Batch transcription
-        const sttResult = await this.sttProvider.transcribe(audioBuffer, 48000);
-        transcribedText = sttResult.text;
+        return "";
+      };
+
+      // Wyoming-whisper: always try primary first (service may be temporarily down). Others: stick to fallback once switched.
+      if (session.fallbackSttProvider && !primaryIsWyoming) {
+        try {
+          const r = await this.tryTranscribeWithProvider(audioBuffer, 48000, session.fallbackSttProvider);
+          transcribedText = r.text ?? "";
+          if (!transcribedText?.trim()) session.fallbackSttProvider = undefined;
+        } catch (fbErr) {
+          this.logger.warn(
+            `[discord-voice] Session fallback STT failed: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`,
+          );
+          session.fallbackSttProvider = undefined;
+        }
       }
-      
+
+      if (!transcribedText) {
+        // Use effective primary (override or config); streaming only when primary is Deepgram
+        if (this.streamingSTT && effectivePrimaryStt === "deepgram" && this.config.streamingSTT) {
+          transcribedText = this.streamingSTT.finalizeSession(userId);
+
+          // Fallback to batch if streaming didn't capture anything
+          if (!transcribedText || transcribedText.trim().length === 0) {
+            this.logger.debug?.(`[discord-voice] Streaming empty, falling back to batch STT`);
+            try {
+              const r = await this.tryTranscribeWithProvider(audioBuffer, 48000, "deepgram");
+              transcribedText = r.text ?? "";
+            } catch (batchErr) {
+              if (fallbackList.length > 0 && isRetryableSttError(batchErr)) {
+                this.logger.warn(`[discord-voice] Primary STT failed, trying fallbacks: [${fallbackList.join(", ")}]`);
+                transcribedText = await tryFallbacks();
+              } else throw batchErr;
+            }
+          }
+        } else {
+          try {
+            const r = await this.tryTranscribeWithProvider(audioBuffer, 48000, effectivePrimaryStt);
+            transcribedText = r.text ?? "";
+          } catch (batchErr) {
+            if (fallbackList.length > 0 && isRetryableSttError(batchErr)) {
+              this.logger.warn(`[discord-voice] Primary STT failed, trying fallbacks: [${fallbackList.join(", ")}]`);
+              transcribedText = await tryFallbacks();
+            } else throw batchErr;
+          }
+        }
+      }
+
       if (!transcribedText || transcribedText.trim().length === 0) {
         this.logger.debug?.(`[discord-voice] Empty transcription for user ${userId}`);
         session.processing = false;
         return;
       }
 
-      this.logger.info(`[discord-voice] Transcribed: "${transcribedText}"`);
+      // Dedupe: skip if same transcript was just processed (e.g. duplicate "end" events, gateway relay)
+      const trimmed = transcribedText.trim();
+      const now = Date.now();
+      const dedupeWindowMs = 5000;
+      if (
+        session.lastProcessedTranscript === trimmed &&
+        session.lastProcessedTranscriptAt !== undefined &&
+        session.lastProcessedTranscriptAt !== null &&
+        now - session.lastProcessedTranscriptAt < dedupeWindowMs
+      ) {
+        this.logger.debug?.(`[discord-voice] Skipping duplicate transcript (same text within ${dedupeWindowMs}ms)`);
+        session.processing = false;
+        return;
+      }
+      session.lastProcessedTranscript = trimmed;
+      session.lastProcessedTranscriptAt = now;
+
+      const sttInfo = this.getSttProviderInfo(session);
+      this.logger.info(
+        `[discord-voice] Transcribed: "${transcribedText}" (STT: ${sttInfo.provider} / ${sttInfo.model})`,
+      );
 
       // Play looping thinking sound while processing (if enabled)
       const stopThinking = await this.startThinkingLoop(session);
@@ -712,25 +848,56 @@ export class VoiceConnectionManager {
         stopThinking();
         const delayMs = this.config.thinkingSound?.stopDelayMs ?? 50;
         if (delayMs > 0) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       }
-      
+
       if (!response || response.trim().length === 0) {
+        session.processing = false;
+        return;
+      }
+
+      // Skip if agent already spoke via discord_voice tool (avoids duplicate playback)
+      // Use current session from map: agent's auto-join may have replaced session during run
+      const currentSession = this.sessions.get(session.guildId) ?? session;
+      if (currentSession.spokeViaToolThisRun) {
+        this.logger.debug?.("[discord-voice] Skipping speak – agent already spoke via discord_voice tool");
         session.processing = false;
         return;
       }
 
       // Ensure main player is subscribed before speaking
       session.connection.subscribe(session.player);
-      
+
       // Synthesize and play response
       await this.speak(session.guildId, response);
     } catch (error) {
-      this.logger.error(`[discord-voice] Error processing audio: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `[discord-voice] Error processing audio: ${error instanceof Error ? error.message : String(error)}`,
+      );
     } finally {
       session.processing = false;
     }
+  }
+
+  /**
+   * Try to transcribe using a specific STT provider (for fallback)
+   */
+  private async tryTranscribeWithProvider(
+    audioBuffer: Buffer,
+    sampleRate: number,
+    provider:
+      | "whisper"
+      | "gpt4o-mini"
+      | "gpt4o-transcribe"
+      | "gpt4o-transcribe-diarize"
+      | "deepgram"
+      | "local-whisper"
+      | "wyoming-whisper",
+  ): Promise<STTResult> {
+    const overrideConfig = { ...this.config, sttProvider: provider };
+    const stt = createSTTProvider(overrideConfig);
+    return stt.transcribe(audioBuffer, sampleRate);
   }
 
   /**
@@ -738,7 +905,7 @@ export class VoiceConnectionManager {
    */
   private async tryGetResourceWithProvider(
     text: string,
-    provider: "openai" | "elevenlabs" | "kokoro"
+    provider: "openai" | "elevenlabs" | "deepgram" | "polly" | "kokoro" | "edge",
   ): Promise<ReturnType<typeof createAudioResource> | null> {
     const overrideConfig = { ...this.config, ttsProvider: provider };
     const fallbackTts = createTTSProvider(overrideConfig);
@@ -765,16 +932,29 @@ export class VoiceConnectionManager {
   /**
    * Speak text in the voice channel
    */
-  async speak(guildId: string, text: string): Promise<void> {
+  async speak(guildId: string, rawText: string): Promise<void> {
     const session = this.sessions.get(guildId);
     if (!session) {
       throw new Error("Not connected to voice channel");
     }
 
-    // Strip emojis before TTS when noEmojiHint is set (avoids Kokoro/others reading them aloud)
-    if (this.config.noEmojiHint !== false) {
-      text = text.replace(emojiRegex(), "").replace(/\s{2,}/g, " ").trim();
+    // If thinking sound is playing (e.g. agent called discord_voice speak tool during run),
+    // stop it and re-subscribe to main player so our audio is actually heard
+    if (session.thinkingPlayer && session.thinkingPlayer.state.status !== AudioPlayerStatus.Idle) {
+      session.thinkingPlayer.removeAllListeners();
+      session.thinkingPlayer.stop(true);
+      session.thinkingPlayer = undefined;
+      session.connection.subscribe(session.player);
     }
+
+    // Strip emojis before TTS when noEmojiHint is set (avoids Kokoro/others reading them aloud)
+    const text =
+      this.config.noEmojiHint !== false
+        ? rawText
+            .replace(emojiRegex(), "")
+            .replace(/\s{2,}/g, " ")
+            .trim()
+        : rawText;
 
     this.ensureProviders();
 
@@ -805,29 +985,64 @@ export class VoiceConnectionManager {
         session.player.on(AudioPlayerStatus.Idle, onIdle);
         session.player.on("error", onError);
       });
-
     try {
-      this.logger.info(`[discord-voice] Speaking: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`);
-
       let resource: ReturnType<typeof createAudioResource> | null = null;
-      const fallbackProvider = this.config.ttsFallbackProvider;
+      const fallbackList = this.config.ttsFallbackProviders ?? [];
+
+      const tryFallbacks = async (): Promise<ReturnType<typeof createAudioResource> | null> => {
+        for (const provider of fallbackList) {
+          try {
+            const r = await this.tryGetResourceWithProvider(text, provider);
+            if (r) {
+              session.fallbackTtsProvider = provider;
+              this.logger.info(`[discord-voice] Using fallback TTS: ${provider} (session will stay on fallback)`);
+              return r;
+            }
+          } catch (fbErr) {
+            this.logger.warn(
+              `[discord-voice] Fallback ${provider} failed: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`,
+            );
+          }
+        }
+        return null;
+      };
 
       // If session already switched to fallback (e.g. quota hit earlier), use it for rest of session
-      if (session.useFallbackTts && fallbackProvider) {
+      if (session.fallbackTtsProvider) {
         try {
-          resource = await this.tryGetResourceWithProvider(text, fallbackProvider);
+          resource = await this.tryGetResourceWithProvider(text, session.fallbackTtsProvider);
           if (resource) {
-            this.logger.debug?.(`[discord-voice] Using fallback TTS (session): ${fallbackProvider}`);
+            this.logger.debug?.(`[discord-voice] Using fallback TTS (session): ${session.fallbackTtsProvider}`);
+          } else {
+            session.fallbackTtsProvider = undefined;
           }
         } catch (fbErr) {
           this.logger.warn(
-            `[discord-voice] Fallback TTS failed: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`
+            `[discord-voice] Session fallback TTS failed: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`,
+          );
+          session.fallbackTtsProvider = undefined;
+        }
+      }
+
+      const effectivePrimaryTts = this.getEffectiveTtsProvider(session);
+
+      // If user overrode TTS provider, try that first
+      if (!resource && session.ttsProviderOverride) {
+        try {
+          resource = await this.tryGetResourceWithProvider(text, effectivePrimaryTts);
+        } catch (ovErr) {
+          this.logger.warn(
+            `[discord-voice] Override TTS ${effectivePrimaryTts} failed: ${ovErr instanceof Error ? ovErr.message : String(ovErr)}`,
           );
         }
       }
 
-      // Try primary: streaming first, then batch (only when not already on fallback)
-      if (!resource && this.streamingTTS) {
+      // Try primary: streaming first (OpenAI/ElevenLabs), then batch (only when not already have resource)
+      if (
+        !resource &&
+        this.streamingTTS &&
+        (effectivePrimaryTts === "openai" || effectivePrimaryTts === "elevenlabs")
+      ) {
         try {
           const streamResult = await this.streamingTTS.synthesizeStream(text);
           if (streamResult.format === "opus") {
@@ -838,48 +1053,26 @@ export class VoiceConnectionManager {
           this.logger.debug?.(`[discord-voice] Using streaming TTS`);
         } catch (streamError) {
           this.logger.warn(
-            `[discord-voice] Streaming TTS failed, falling back to buffered: ${streamError instanceof Error ? streamError.message : String(streamError)}`
+            `[discord-voice] Streaming TTS failed, falling back to buffered: ${streamError instanceof Error ? streamError.message : String(streamError)}`,
           );
-          // If retryable (quota/rate limit) and fallback configured, skip batch and try fallback
-          if (fallbackProvider && isRetryableTtsError(streamError)) {
+          if (fallbackList.length > 0 && isRetryableTtsError(streamError)) {
             this.logger.warn(
-              `[discord-voice] Primary TTS failed (quota/rate limit), trying fallback: ${fallbackProvider}`
+              `[discord-voice] Primary TTS failed (quota/rate limit), trying fallbacks: [${fallbackList.join(", ")}]`,
             );
-            try {
-              resource = await this.tryGetResourceWithProvider(text, fallbackProvider);
-              if (resource) {
-                session.useFallbackTts = true;
-                this.logger.info(`[discord-voice] Using fallback TTS: ${fallbackProvider} (session will stay on fallback)`);
-              }
-            } catch {
-              // Fall through to batch
-            }
+            resource = await tryFallbacks();
           }
         }
       }
 
-      if (!resource && this.ttsProvider) {
+      if (!resource) {
         try {
-          const ttsResult = await this.ttsProvider.synthesize(text);
-          resource = createResourceFromTTSResult(ttsResult);
-          this.logger.debug?.(`[discord-voice] Using buffered TTS`);
+          resource = await this.tryGetResourceWithProvider(text, effectivePrimaryTts);
         } catch (batchError) {
-          // Primary failed – try fallback if configured and error is retryable
-          if (fallbackProvider && isRetryableTtsError(batchError)) {
+          if (fallbackList.length > 0 && isRetryableTtsError(batchError)) {
             this.logger.warn(
-              `[discord-voice] Primary TTS failed (quota/rate limit), trying fallback: ${fallbackProvider}`
+              `[discord-voice] Primary TTS failed (quota/rate limit), trying fallbacks: [${fallbackList.join(", ")}]`,
             );
-            try {
-              resource = await this.tryGetResourceWithProvider(text, fallbackProvider);
-              if (resource) {
-                session.useFallbackTts = true;
-                this.logger.info(`[discord-voice] Using fallback TTS: ${fallbackProvider} (session will stay on fallback)`);
-              }
-            } catch (fbErr) {
-              this.logger.warn(
-                `[discord-voice] Fallback TTS failed: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`
-              );
-            }
+            resource = await tryFallbacks();
           }
           if (!resource) throw batchError;
         }
@@ -888,6 +1081,11 @@ export class VoiceConnectionManager {
       if (!resource) {
         throw new Error("Failed to create audio resource");
       }
+
+      const ttsInfo = this.getTtsProviderInfo(session);
+      this.logger.info(
+        `[discord-voice] Speaking: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}" (TTS: ${ttsInfo.provider} / ${ttsInfo.model})`,
+      );
 
       session.player.play(resource);
       await waitForPlayback();
@@ -913,9 +1111,23 @@ export class VoiceConnectionManager {
       const { fileURLToPath } = await import("node:url");
 
       const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      const pluginRoot = path.join(__dirname, "..");
+      const pluginRoot = path.resolve(path.join(__dirname, ".."));
       const pathRaw = ts?.path ?? "assets/thinking.mp3";
-      const thinkingPath = path.isAbsolute(pathRaw) ? pathRaw : path.join(pluginRoot, pathRaw);
+
+      // Security: reject absolute paths and path traversal to prevent arbitrary file reads
+      if (path.isAbsolute(pathRaw)) {
+        this.logger.warn("[discord-voice] Absolute thinking sound paths are not allowed for security reasons");
+        return () => {};
+      }
+      if (pathRaw.includes("..")) {
+        this.logger.warn("[discord-voice] Path traversal in thinking sound path is not allowed");
+        return () => {};
+      }
+      const thinkingPath = path.resolve(path.join(pluginRoot, pathRaw));
+      if (!thinkingPath.startsWith(pluginRoot)) {
+        this.logger.warn("[discord-voice] Thinking sound path resolved outside plugin root");
+        return () => {};
+      }
 
       if (!fs.existsSync(thinkingPath)) {
         return () => {};
@@ -952,7 +1164,9 @@ export class VoiceConnectionManager {
         session.connection.subscribe(session.player);
       };
     } catch (error) {
-      this.logger.debug?.(`[discord-voice] Error starting thinking loop: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.debug?.(
+        `[discord-voice] Error starting thinking loop: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return () => {
         session.thinkingPlayer = undefined;
         session.connection.subscribe(session.player);
@@ -1000,6 +1214,133 @@ export class VoiceConnectionManager {
    */
   getAllSessions(): VoiceSession[] {
     return Array.from(this.sessions.values());
+  }
+
+  /**
+   * Set runtime overrides for a guild (STT provider, TTS provider, model, think level)
+   */
+  setVoiceConfig(
+    guildId: string,
+    overrides: {
+      sttProvider?: DiscordVoiceConfig["sttProvider"] | null;
+      ttsProvider?: DiscordVoiceConfig["ttsProvider"] | null;
+      model?: string | null;
+      thinkLevel?: "off" | "low" | "medium" | "high" | null;
+    },
+  ): boolean {
+    const session = this.sessions.get(guildId);
+    if (!session) return false;
+    if (overrides.sttProvider !== undefined) {
+      session.sttProviderOverride = overrides.sttProvider ?? undefined;
+    }
+    if (overrides.ttsProvider !== undefined) {
+      session.ttsProviderOverride = overrides.ttsProvider ?? undefined;
+    }
+    if (overrides.model !== undefined) {
+      session.modelOverride = overrides.model ?? undefined;
+    }
+    if (overrides.thinkLevel !== undefined) {
+      session.thinkLevelOverride = overrides.thinkLevel ?? undefined;
+    }
+    this.logger.info(
+      `[discord-voice] Voice config updated for guild ${guildId}: STT=${session.sttProviderOverride ?? "default"}, TTS=${session.ttsProviderOverride ?? "default"}, model=${session.modelOverride ?? "default"}, think=${session.thinkLevelOverride ?? "default"}`,
+    );
+    return true;
+  }
+
+  /**
+   * Reset STT and TTS fallbacks for a guild – next request will try primary providers again
+   */
+  resetFallbacks(guildId: string): boolean {
+    const session = this.sessions.get(guildId);
+    if (!session) return false;
+    const hadStt = Boolean(session.fallbackSttProvider);
+    const hadTts = Boolean(session.fallbackTtsProvider);
+    session.fallbackSttProvider = undefined;
+    session.fallbackTtsProvider = undefined;
+    if (hadStt || hadTts) {
+      this.logger.info(`[discord-voice] Reset fallbacks for guild ${guildId} (STT: ${hadStt}, TTS: ${hadTts})`);
+    }
+    return hadStt || hadTts;
+  }
+
+  /**
+   * Get effective primary STT provider (override or config)
+   */
+  getEffectiveSttProvider(session: VoiceSession): typeof this.config.sttProvider {
+    return session.sttProviderOverride ?? this.config.sttProvider;
+  }
+
+  /**
+   * Get effective primary TTS provider (override or config)
+   */
+  getEffectiveTtsProvider(session: VoiceSession): typeof this.config.ttsProvider {
+    return session.ttsProviderOverride ?? this.config.ttsProvider;
+  }
+
+  /**
+   * Resolve effective STT provider and model string for display
+   */
+  getSttProviderInfo(session: VoiceSession): { provider: string; model: string } {
+    const p = session.fallbackSttProvider ?? session.sttProviderOverride ?? this.config.sttProvider;
+    const cfg = this.config;
+    let model = "";
+    switch (p) {
+      case "whisper":
+        model = cfg.openai?.whisperModel ?? "whisper-1";
+        break;
+      case "gpt4o-mini":
+      case "gpt4o-transcribe":
+      case "gpt4o-transcribe-diarize":
+        model = p;
+        break;
+      case "deepgram":
+        model = cfg.deepgram?.model ?? "nova-2";
+        break;
+      case "local-whisper":
+        model = cfg.localWhisper?.model ?? "Xenova/whisper-tiny.en";
+        break;
+      case "wyoming-whisper": {
+        const w = cfg.wyomingWhisper;
+        model = w?.uri ?? `${w?.host ?? "127.0.0.1"}:${w?.port ?? 10300}`;
+        break;
+      }
+      default:
+        model = p;
+    }
+    return { provider: p, model };
+  }
+
+  /**
+   * Resolve effective TTS provider and model/voice string for display
+   */
+  getTtsProviderInfo(session: VoiceSession): { provider: string; model: string } {
+    const p = session.fallbackTtsProvider ?? session.ttsProviderOverride ?? this.config.ttsProvider;
+    const cfg = this.config;
+    let model = "";
+    switch (p) {
+      case "openai":
+        model = `${cfg.openai?.voice ?? "nova"} (${cfg.openai?.ttsModel ?? "tts-1"})`;
+        break;
+      case "elevenlabs":
+        model = `${cfg.elevenlabs?.voiceId ?? "default"} (${cfg.elevenlabs?.modelId ?? "turbo"})`;
+        break;
+      case "deepgram":
+        model = cfg.deepgram?.ttsModel ?? cfg.deepgram?.model ?? "aura-asteria-en";
+        break;
+      case "polly":
+        model = cfg.polly?.voiceId ?? "Joanna";
+        break;
+      case "kokoro":
+        model = `${cfg.kokoro?.voice ?? "af_heart"} (${cfg.kokoro?.modelId ?? "Kokoro-82M"})`;
+        break;
+      case "edge":
+        model = cfg.edge?.voice ?? "de-DE-KatjaNeural";
+        break;
+      default:
+        model = p;
+    }
+    return { provider: p, model };
   }
 
   /**
