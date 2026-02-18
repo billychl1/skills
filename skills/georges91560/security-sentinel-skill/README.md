@@ -510,7 +510,7 @@ If this skill helped protect your AI agent, please consider:
 ## 📚 Related Projects
 
 - [OpenClaw](https://openclaw.ai) - Autonomous AI agent framework
-- [ClawHub](https://clawhub.io) - Skill registry and marketplace
+- [ClawHub](https://clawhub.ai) - Skill registry and marketplace
 - [Anthropic Claude](https://anthropic.com) - Foundation model
 
 ---

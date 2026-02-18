@@ -641,7 +641,7 @@ Connect to external threat feeds:
 
 ```python
 # Daily sync
-threat_feed = fetch_latest_patterns("https://openclaw-security.io/feed")
+threat_feed = fetch_latest_patterns("https://openclaw-security.ai/feed")
 BLACKLIST_PATTERNS.extend(threat_feed["new_patterns"])
 ```
 

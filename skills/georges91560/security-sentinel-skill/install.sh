@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SKILL_NAME="security-sentinel"
-GITHUB_REPO="your-username/security-sentinel-skill"
+GITHUB_REPO="georges91560/security-sentinel-skill"
 INSTALL_DIR="${INSTALL_DIR:-/workspace/skills/$SKILL_NAME}"
 GITHUB_RAW_URL="https://raw.githubusercontent.com/$GITHUB_REPO/main"
 
