@@ -3,11 +3,16 @@
   "slug": "unitask-agent",
   "displayName": "Unitask Agent",
   "latest": {
-    "version": "0.14.3",
-    "publishedAt": 1770896432828,
-    "commit": "https://github.com/openclaw/skills/commit/2c3304b05b67ae1f74c9728ba6bf1c22c1823f2f"
+    "version": "0.17.1",
+    "publishedAt": 1771323111775,
+    "commit": null
   },
   "history": [
+    {
+      "version": "0.14.3",
+      "publishedAt": 1770896432828,
+      "commit": "https://github.com/openclaw/skills/commit/2c3304b05b67ae1f74c9728ba6bf1c22c1823f2f"
+    },
     {
       "version": "0.14.0",
       "publishedAt": 1770890075578,
