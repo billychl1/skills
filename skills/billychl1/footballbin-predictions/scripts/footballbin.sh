@@ -95,21 +95,24 @@ cmd_predictions() {
         esac
     done
 
-    # Build arguments JSON
+    # Build JSON arguments safely using jq to prevent injection
     local args
-    args="{\"league\":\"$league\""
-    if [[ -n "$matchweek" ]]; then
-        args="$args,\"matchweek\":$matchweek"
-    fi
-    if [[ -n "$home_team" ]]; then
-        args="$args,\"home_team\":\"$home_team\""
-    fi
-    if [[ -n "$away_team" ]]; then
-        args="$args,\"away_team\":\"$away_team\""
-    fi
-    args="$args}"
+    args=$(jq -n \
+        --arg league "$league" \
+        --arg home "$home_team" \
+        --arg away "$away_team" \
+        '{league: $league} +
+         (if $home != "" then {home_team: $home} else {} end) +
+         (if $away != "" then {away_team: $away} else {} end)')
 
-    local payload="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"get_match_predictions\",\"arguments\":$args}}"
+    if [[ -n "$matchweek" ]]; then
+        args=$(echo "$args" | jq --argjson mw "$matchweek" '. + {matchweek: $mw}')
+    fi
+
+    local payload
+    payload=$(jq -n \
+        --argjson args "$args" \
+        '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_match_predictions","arguments":$args}}')
 
     local response
     response=$(mcp_call "$payload")
