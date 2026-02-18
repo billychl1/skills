@@ -3,11 +3,16 @@
   "slug": "cybercentry-ethereum-token-verification",
   "displayName": "Cybercentry Ethereum Token Verification",
   "latest": {
-    "version": "1.0.19",
-    "publishedAt": 1771176979009,
-    "commit": "https://github.com/openclaw/skills/commit/917dd27a4692211984e5fc5dbd92b0de4294167b"
+    "version": "1.0.20",
+    "publishedAt": 1771323124284,
+    "commit": null
   },
   "history": [
+    {
+      "version": "1.0.19",
+      "publishedAt": 1771176979009,
+      "commit": "https://github.com/openclaw/skills/commit/917dd27a4692211984e5fc5dbd92b0de4294167b"
+    },
     {
       "version": "1.0.12",
       "publishedAt": 1771075049633,

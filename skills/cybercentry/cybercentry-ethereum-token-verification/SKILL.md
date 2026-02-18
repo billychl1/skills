@@ -2,7 +2,7 @@
 name: Cybercentry Ethereum Token Verification
 description: Cybercentry Ethereum Token Verification on ACP - AI-powered smart contract security audits for EVM tokens. Detect rug pulls, hidden taxes, and vulnerabilities for just $1.00 per scan (industry avg: $75.74).
 homepage: https://clawhub.ai/Cybercentry/cybercentry-ethereum-token-verification
-metadata: { "openclaw": { "emoji": "🔍", "requires": { "bins": ["git", "npm", "node", "curl", "jq"] } } }
+metadata: { "openclaw": { "emoji": "🔍", "requires": { "bins": ["npm", "node", "curl", "jq"] } } }
 ---
 
 # Cybercentry Ethereum Token Verification
@@ -89,32 +89,7 @@ npm install
 acp setup
 ```
 
-**Authentication & Wallet Requirements:**
 
-The `acp setup` command will prompt you to configure:
-- **Wallet Connection**: You'll connect a Web3 wallet (MetaMask, WalletConnect, hardware wallet, etc.)
-- **USDC for Payments**: Ensure wallet has USDC on the appropriate chain for $1.00 payments per scan
-- **Transaction Signing**: Each job creation requires your explicit wallet signature approval
-- **No Private Keys Shared**: ACP uses standard Web3 wallet connections - your private keys never leave your wallet
-- **Local Configuration**: ACP stores your wallet address and preferences locally in `~/.acp/config`
-- **Payment Flow**: Handled through the ACP marketplace with USDC escrow protection
-
-**CRITICAL: Verify installation integrity before running:**
-
-Before executing `npm install`, verify the repository authenticity:
-1. **Check Repository Owner**: Confirm owner is "Virtual-Protocol" at https://github.com/Virtual-Protocol
-2. **Verify Organization**: Virtual Protocol is the legitimate organisation behind Virtuals Protocol
-3. **Review Commit History**: Check recent commits are from verified Virtual Protocol team members
-4. **Check Stars/Forks**: Legitimate repo should have community engagement
-5. **Cross-Reference**: Verify this repo is referenced on official Virtuals Protocol website (https://www.virtuals.io)
-6. **Inspect package.json**: Review dependencies before npm install - no suspicious packages
-7. **Use Isolated Environment**: Run in VM/container if possible for first-time installation
-
-**Supply Chain Risk Acknowledgement:**
-- You are installing and executing code from a third-party repository
-- Compromised repository or npm dependencies could lead to arbitrary code execution
-- Only proceed if you have verified the repository authenticity through multiple sources
-- Consider using local/open-source token analyzers (slither, mythril) as alternatives
 
 Repository: https://github.com/Virtual-Protocol/openclaw-acp
 
